@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+/* Design tokens CookGrim — voir ARCHITECTURE.md pour l'origine de la palette. */
+:root {
+  --color-bg: #f0edf4;
+  --color-surface: #ffffff;
+  --color-surface-line: #ded7e8;
+  --color-text: #3c2350;
+  --color-text-muted: #7a6d8c;
+
+  --color-plum: #3c2350;
+  --color-saffron: #f0a400;
+  --color-mint: #3fbf98;
+
+  --color-tile-bg: #3c2350;
+  --color-tile-fg: #f0edf4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-bg: #1d1226;
+    --color-surface: #291a38;
+    --color-surface-line: #3e2c52;
+    --color-text: #f0edf4;
+    --color-text-muted: #b3a4c4;
+    --color-saffron: #ffc24d;
+    --color-mint: #5fe0bc;
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-bg: #1d1226;
+  --color-surface: #291a38;
+  --color-surface-line: #3e2c52;
+  --color-text: #f0edf4;
+  --color-text-muted: #b3a4c4;
+  --color-saffron: #ffc24d;
+  --color-mint: #5fe0bc;
+}
+
+@theme inline {
+  --font-display: "Fredoka", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Rubik", ui-sans-serif, system-ui, sans-serif;
+
+  --color-bg: var(--color-bg);
+  --color-surface: var(--color-surface);
+  --color-surface-line: var(--color-surface-line);
+  --color-text: var(--color-text);
+  --color-text-muted: var(--color-text-muted);
+  --color-plum: var(--color-plum);
+  --color-saffron: var(--color-saffron);
+  --color-mint: var(--color-mint);
+  --color-tile-bg: var(--color-tile-bg);
+  --color-tile-fg: var(--color-tile-fg);
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100svh;
+}
