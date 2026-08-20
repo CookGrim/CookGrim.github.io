@@ -5,6 +5,12 @@ import { VitePWA } from "vite-plugin-pwa";
 
 // https://vite.dev/config/
 export default defineConfig({
+  server: {
+    proxy: {
+      // apps/api tourne sur ce port en dev (voir apps/api/.env.example)
+      "/api": { target: "http://localhost:8787", changeOrigin: true },
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),

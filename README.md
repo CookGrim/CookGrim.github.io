@@ -3,13 +3,17 @@
 Un livre de recettes qui préremplit le formulaire depuis une photo et
 compose la liste de courses à partir d'une sélection de recettes.
 
-Voir [ARCHITECTURE.md](./ARCHITECTURE.md) pour la stack, le modèle de
-données et la feuille de route.
+Monorepo : `apps/web` (PWA React/Vite) + `apps/api` (serveur Hono, Turso,
+Better Auth). Voir [ARCHITECTURE.md](./ARCHITECTURE.md) pour le détail.
 
 ## Démarrer
 
 ```bash
 npm install
-cp .env.example .env   # renseigner VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY
+cp apps/api/.env.example apps/api/.env
+cp apps/web/.env.example apps/web/.env
 npm run dev
 ```
+
+- `apps/web` → http://localhost:5173
+- `apps/api` → http://localhost:8787

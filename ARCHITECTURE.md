@@ -2,8 +2,10 @@
 
 PWA de recettes : formulaire de saisie (préremplissable depuis une photo via
 IA vision), génération de liste de courses à partir d'une sélection de
-recettes, partage par lien public et export PDF. Ce document sert de
-référence pour la maintenance, dans le même esprit que celui de MindFlow.
+recettes, partage par lien public et export PDF.
+
+Monorepo npm workspaces, deux services déployés séparément sur **Render**,
+code sur **GitHub**, base de données **Turso**.
 
 ---
 
@@ -11,121 +13,163 @@ référence pour la maintenance, dans le même esprit que celui de MindFlow.
 
 | Domaine | Techno |
 |---|---|
-| Langage | TypeScript |
-| UI | React 19 + Tailwind CSS v4 (config CSS-first, voir `src/index.css`) |
-| Build | Vite |
-| Routing | React Router |
-| État serveur / cache | TanStack Query |
+| Monorepo | npm workspaces (`apps/web`, `apps/api`) |
+| Frontend | React 19 + Vite + TypeScript + Tailwind CSS v4, PWA (`vite-plugin-pwa`) |
+| Backend | Hono (serveur TypeScript), déployé comme Web Service Render |
+| Base de données | Turso (SQLite/libSQL) via `@libsql/client` |
+| ORM / migrations | Drizzle ORM + drizzle-kit |
+| Auth | Better Auth (email + mot de passe), adaptateur Drizzle/SQLite |
+| Vision IA (prefill photo) | Claude (`@anthropic-ai/sdk`), appelé depuis une route serveur (`POST /api/recipes/extract`) |
+| État serveur / cache (front) | TanStack Query |
 | Formulaires | React Hook Form + Zod |
-| Backend | Supabase (Postgres + Auth + Storage + Edge Functions) |
-| Vision IA (prefill photo) | Claude (API Anthropic), appelée depuis une Edge Function |
-| PWA | `vite-plugin-pwa` (Workbox) |
-| Export PDF | `@react-pdf/renderer` (à ajouter en phase 5, génération 100% client) |
+| Hébergement | Render (Web Service pour l'API, Static Site pour le front) |
+| CI/déploiement | GitHub → déploiement auto Render (voir `render.yaml`) |
 
-Le projet n'est pas encore un dépôt Git à la création du scaffold — voir la
-fin de ce document pour l'initialiser.
+### Pourquoi ce choix (vs. Supabase)
 
-### Lancer en local
+Le premier jet du scaffold utilisait Supabase (backend-as-a-service : auth +
+DB + storage + edge functions inclus). Ce projet est revenu sur cette
+stack pour rester cohérent avec le reste des projets de l'auteur
+(GitHub/Render/Turso déjà utilisés ailleurs). Contrepartie : sans RLS ni
+service tout-en-un, l'auth, l'API et le contrôle d'accès sont du code
+applicatif à part entière — chaque requête doit explicitement filtrer par
+`user_id`, il n'y a pas de filet de sécurité au niveau base de données.
+
+**Photos de recette** : différées en v2. La photo ne sert qu'à l'extraction
+IA (envoyée à Claude, jamais stockée) — pas de stockage objet à mettre en
+place tout de suite. Quand ce sera nécessaire, Cloudflare R2 (compatible
+S3) est le candidat naturel : Render n'a pas d'équivalent natif.
+
+---
+
+## 2. Lancer en local
 
 ```bash
-npm install
-cp .env.example .env   # puis renseigner VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY
-npm run dev
+npm install                     # installe les deux workspaces depuis la racine
+cp apps/api/.env.example apps/api/.env
+cp apps/web/.env.example apps/web/.env
+npm run dev                     # lance apps/api (port 8787) + apps/web (port 5173) en parallèle
 ```
 
-Sans projet Supabase connecté, l'app démarre quand même (le client Supabase
-retombe sur des valeurs factices) mais aucune requête ne fonctionnera —
-suffisant pour travailler sur l'UI seule.
+Sans `TURSO_DATABASE_URL` renseigné, `apps/api` retombe sur un fichier
+SQLite local (`apps/api/local.db`) — pratique pour développer sans compte
+Turso. Le frontend proxifie `/api` vers `localhost:8787` en dev (voir
+`apps/web/vite.config.ts`), pas de CORS à gérer localement.
 
-### Régénérer les icônes
+### Base de données
 
-La marque (`public/mark.svg`) est la source de vérité. Après toute
+```bash
+cd apps/api
+npx drizzle-kit generate   # génère une migration après modif du schéma
+npx drizzle-kit migrate    # applique les migrations en attente
+npx drizzle-kit studio     # explorateur de données
+```
+
+Le schéma applicatif vit dans `apps/api/src/db/schema.ts`. Les tables d'auth
+(`user`, `session`, `account`, `verification`) vivent dans
+`apps/api/src/db/auth-schema.ts`, générées par Better Auth
+(`npx @better-auth/cli generate --output src/db/auth-schema.ts -y`) — ne
+pas les éditer à la main sauf pour corriger un décalage de version comme
+celui documenté en commentaire dans ce fichier (champ `issuer` sur
+`account`, absent de la génération avec `@better-auth/cli@1.4.21` alors que
+`better-auth@1.7.x` l'exige — à revérifier si vous mettez à jour l'un des
+deux paquets).
+
+### Régénérer les icônes PWA
+
+`apps/web/public/mark.svg` est la source de vérité de la marque. Après
 modification :
 
 ```bash
 npm run icons
 ```
 
-Ça régénère `public/icons/*.png` (icône d'app, maskable, apple-touch-icon)
-via `scripts/generate-icons.mjs` (sharp).
-
 ---
 
-## 2. Arborescence
+## 3. Arborescence
 
 ```
-src/
-  components/     Layout (nav + wordmark), composants partagés
-  pages/          RecipesPage, RecipeFormPage, ShoppingListPage, ...
-  lib/            supabase.ts (client), à compléter (queryClient, pdf, etc.)
-  types/          recipe.ts — modèle de données côté front
-supabase/
-  schema.sql      Schéma Postgres + RLS + fonction de partage public
-scripts/
-  generate-icons.mjs
-public/
-  mark.svg        Marque CookGrim (marmite), source des icônes PWA
+apps/web/            PWA (React/Vite)
+  src/pages/          RecipesPage, RecipeFormPage, ShoppingListPage
+  src/lib/api.ts       client REST vers apps/api
+  public/mark.svg      marque CookGrim, source des icônes
+apps/api/             API (Hono)
+  src/db/schema.ts      tables applicatives (Drizzle)
+  src/db/auth-schema.ts tables Better Auth (générées)
+  src/routes/           recipes.ts, shopping-lists.ts, extract.ts
+  src/lib/aggregate-ingredients.ts   agrégation liste de courses (fonction pure)
+  src/middleware/require-auth.ts
+render.yaml           blueprint de déploiement (2 services)
 ```
 
 ---
 
-## 3. Modèle de données
+## 4. Modèle de données
 
-Voir `supabase/schema.sql` pour le détail (colonnes, RLS, fonction
-`get_recipe_by_share_token`). Résumé :
+Cinq tables applicatives (voir `apps/api/src/db/schema.ts`) :
 
-- **recipes** — titre, portions, temps, photo, `notes` (zone libre privée),
-  `share_token` (non-null = lien public actif, régénérable pour révoquer).
-- **ingredients** / **steps** — liés à une recette par `recipe_id`.
-- **shopping_lists** / **shopping_list_items** — une liste = une sélection de
-  recettes agrégée ; `source_recipe_ids` trace la provenance de chaque ligne.
-- RLS : chacun ne lit/écrit que ses propres lignes (`auth.uid() = user_id`,
-  ou jointure sur `recipe_id`/`shopping_list_id`).
-- Partage public : **pas** de policy RLS ouverte sur `share_token` (ça
-  exposerait la liste de toutes les recettes publiques). La lecture passe par
-  la fonction `get_recipe_by_share_token(token)`, `security definer`, qui
-  n'accepte qu'une recherche par token exact connu du visiteur via l'URL.
+- **recipes** — titre, portions, temps, photo (v2), `notes` (zone libre
+  privée), `shareToken` (non-null = lien public actif, régénérable pour
+  révoquer).
+- **ingredients** / **steps** — liés par `recipeId`.
+- **shoppingLists** / **shoppingListItems** — `sourceRecipeIds` (JSON) trace
+  la provenance de chaque ligne agrégée.
+
+Pas de RLS (SQLite n'en a pas) : chaque route vérifie explicitement
+`recipe.userId === user.id` avant de lire/écrire — voir
+`apps/api/src/routes/recipes.ts`.
+
+**Partage public** : `GET /api/recipes/shared/:token` est la seule route non
+authentifiée. Elle retire systématiquement `notes` et `userId` de la
+réponse, quel que soit l'appelant — le partage n'expose jamais les notes
+privées.
 
 ---
 
-## 4. Roadmap
+## 5. Déploiement (Render)
 
-1. **Setup** ✅ — scaffold Vite/React/TS, Tailwind, PWA, schéma Supabase.
-2. **CRUD recettes manuel** — brancher `RecipeFormPage`/`RecipesPage` sur
-   Supabase (`useQuery`/`useMutation`), auth (email magic link).
-3. **Prefill photo → IA** — Edge Function Supabase qui appelle Claude
-   (vision) avec un prompt à schéma JSON strict (titre/portions/
-   ingrédients/étapes), préremplit le formulaire pour relecture.
-4. **Liste de courses** — sélection multi-recettes + multiplicateur de
-   portions, agrégation des ingrédients (nom normalisé, somme si unité
-   compatible), catégorisation, cases à cocher.
-5. **Partage & export** — lien public (`/r/<share_token>`) + import chez le
-   visiteur, export PDF (`@react-pdf/renderer`, génération client).
-6. **Offline-first** — cache de lecture (déjà en place via Workbox), file
+Deux services (voir `render.yaml`, à valider/adapter au premier déploiement
+réel — non testé dans cet environnement) :
+
+1. **cookgrim-api** — Web Service Node, `rootDir` implicite via
+   `--workspace=@cookgrim/api`. Variables : `TURSO_DATABASE_URL`,
+   `TURSO_AUTH_TOKEN`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`,
+   `WEB_ORIGIN`, `ANTHROPIC_API_KEY`.
+2. **cookgrim-web** — Static Site, publie `apps/web/dist`. Variable :
+   `VITE_API_URL` (pointe vers l'URL du service `cookgrim-api`).
+
+GitHub reste la source de vérité : chaque push sur la branche par défaut
+redéploie les deux services.
+
+---
+
+## 6. Roadmap
+
+1. **Setup** ✅ — monorepo, schéma Drizzle/Turso, auth Better Auth, API Hono
+   testée de bout en bout (sign-up, session, CRUD recettes, agrégation liste
+   de courses, partage public).
+2. **Brancher le frontend** — `apps/web` appelle réellement `apps/api`
+   (TanStack Query sur `src/lib/api.ts`), écrans de connexion/inscription.
+   *(Le frontend actuel garde son état local — même perimètre que le
+   premier scaffold Supabase, qui n'était pas non plus branché.)*
+3. **Prefill photo → IA** — la route `POST /api/recipes/extract` existe et
+   fonctionne (testable dès qu'`ANTHROPIC_API_KEY` est renseignée) ; reste à
+   la brancher au formulaire (upload photo → prefill → relecture).
+4. **Offline-first** — cache de lecture (Workbox, déjà configuré), file
    d'écriture hors-ligne à ajouter.
-7. **Partage ciblé compte-à-compte (v2)** — table `recipe_shares`, onglet
-   "Partagées avec moi".
-8. **Polish** — recherche/tags, Lighthouse PWA.
+5. **Export PDF** — `@react-pdf/renderer`, génération 100 % client.
+6. **Partage ciblé compte-à-compte (v2)** — table `recipeShares`.
+7. **Stockage photo** — Cloudflare R2 si le besoin se confirme.
 
 ---
 
-## 5. Points de vigilance
+## 7. Points de vigilance
 
 - Toujours laisser l'utilisateur relire/corriger l'extraction IA avant
   sauvegarde (jamais d'auto-save direct depuis la photo).
-- Notes personnelles exclues par défaut de tout partage (lien public, PDF) —
-  case à cocher explicite pour les inclure.
-- Compresser/redimensionner la photo avant envoi à l'Edge Function (coût +
-  temps de réponse).
-- `ANTHROPIC_API_KEY` est un secret Supabase (`supabase secrets set`),
-  jamais une variable `VITE_*` (elle finirait dans le bundle client).
-
----
-
-## 6. Initialiser Git
-
-```bash
-git init
-git add -A
-git commit -m "Scaffold initial CookGrim"
-```
+- `ANTHROPIC_API_KEY` est une variable serveur uniquement (Render), jamais
+  `VITE_*` — elle finirait dans le bundle client.
+- Chaque nouvelle route doit filtrer explicitement par `user_id` : pas de
+  RLS pour rattraper un oubli.
+- `share_token` doit rester imprévisible (UUID v4) et révocable — c'est déjà
+  le cas (`POST/DELETE /api/recipes/:id/share`).
