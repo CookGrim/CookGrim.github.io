@@ -162,7 +162,12 @@ redéploie les deux services.
    la brancher au formulaire (upload photo → prefill → relecture).
 4. **Offline-first** — cache de lecture (Workbox, déjà configuré), file
    d'écriture hors-ligne à ajouter.
-5. **Export PDF** — `@react-pdf/renderer`, génération 100 % client.
+5. **Partage & export** ✅ — `RecipeDetailPage` (générer/révoquer un lien
+   public, bouton PDF), `SharedRecipePage` publique (`/r/:token`, sans
+   notes) avec import dans ses propres recettes si connecté. Export PDF
+   100 % client (`@react-pdf/renderer`, chargé à la demande via `import()`
+   dynamique pour ne pas alourdir le chargement initial — voir
+   `src/lib/recipe-pdf.tsx`).
 6. **Partage ciblé compte-à-compte (v2)** — table `recipeShares`.
 7. **Stockage photo** — Cloudflare R2 si le besoin se confirme.
 

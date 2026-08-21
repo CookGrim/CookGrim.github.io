@@ -75,12 +75,14 @@ export function RecipesPage() {
                   className="size-5 accent-(--color-plum)"
                   aria-label={`Sélectionner ${recipe.title} pour la liste de courses`}
                 />
-                <div className="flex-1">
-                  <p className="font-medium text-(--color-text)">{recipe.title}</p>
+                <Link to={`/recettes/${recipe.id}`} className="flex-1">
+                  <p className="font-medium text-(--color-text) hover:text-(--color-plum)">
+                    {recipe.title}
+                  </p>
                   <p className="text-sm text-(--color-text-muted)">
                     {recipe.servings ? `${recipe.servings} portions` : "Portions non précisées"}
                   </p>
-                </div>
+                </Link>
                 {isSelected && (
                   <label className="flex items-center gap-1.5 text-sm text-(--color-text-muted)">
                     ×

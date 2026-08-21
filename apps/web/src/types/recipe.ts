@@ -36,6 +36,9 @@ export type Recipe = RecipeSummary & {
   steps: Step[];
 };
 
+// GET /api/recipes/shared/:token — vue publique, sans notes ni userId
+export type SharedRecipe = Omit<Recipe, "notes" | "userId">;
+
 // Champs envoyés par le formulaire de création/édition.
 export type RecipeInput = {
   title: string;
