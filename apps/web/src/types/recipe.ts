@@ -39,6 +39,15 @@ export type Recipe = RecipeSummary & {
 // GET /api/recipes/shared/:token — vue publique, sans notes ni userId
 export type SharedRecipe = Omit<Recipe, "notes" | "userId">;
 
+// Réponse de POST /api/recipes/extract — brouillon à relire, jamais
+// sauvegardé automatiquement.
+export type ExtractedRecipe = {
+  title: string;
+  servings: number | null;
+  ingredients: { name: string; quantity: number | null; unit: string | null }[];
+  steps: string[];
+};
+
 // Champs envoyés par le formulaire de création/édition.
 export type RecipeInput = {
   title: string;

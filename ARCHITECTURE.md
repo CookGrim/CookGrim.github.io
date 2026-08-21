@@ -157,9 +157,13 @@ redéploie les deux services.
    - Cookie de session cross-site (web/api sur deux domaines Render
      différents) : `advanced.defaultCookieAttributes` force
      `SameSite=None; Secure` en production uniquement (voir `auth.ts`).
-3. **Prefill photo → IA** — la route `POST /api/recipes/extract` existe et
-   fonctionne (testable dès qu'`ANTHROPIC_API_KEY` est renseignée) ; reste à
-   la brancher au formulaire (upload photo → prefill → relecture).
+3. **Prefill photo → IA** ✅ — bouton "Importer depuis une photo" sur
+   `RecipeFormPage` : compression client (`src/lib/compress-image.ts`,
+   redimensionnée à 1600px avant envoi), appel à
+   `POST /api/recipes/extract`, préremplissage du formulaire via
+   `reset()` — rien n'est jamais sauvegardé sans relecture. Testé sans
+   `ANTHROPIC_API_KEY` (erreur 501 propre, affichée à l'utilisateur) ;
+   reste à tester avec une vraie clé une fois renseignée.
 4. **Offline-first** — cache de lecture (Workbox, déjà configuré), file
    d'écriture hors-ligne à ajouter.
 5. **Partage & export** ✅ — `RecipeDetailPage` (générer/révoquer un lien

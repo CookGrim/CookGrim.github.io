@@ -1,9 +1,11 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useRef, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { ApiError } from "../lib/api";
-import { useCreateRecipe } from "../lib/queries/recipes";
+import { compressImage } from "../lib/compress-image";
+import { useCreateRecipe, useExtractRecipe } from "../lib/queries/recipes";
 
 const recipeSchema = z.object({
   title: z.string().min(1, "Le titre est obligatoire."),
@@ -41,10 +43,14 @@ const defaultValues: RecipeFormInput = {
 export function RecipeFormPage() {
   const navigate = useNavigate();
   const createRecipe = useCreateRecipe();
+  const extractRecipe = useExtractRecipe();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [extractError, setExtractError] = useState<string | null>(null);
   const {
     register,
     control,
     handleSubmit,
+    reset,
     setError,
     formState: { errors, isSubmitting },
   } = useForm<RecipeFormInput, unknown, RecipeFormOutput>({
@@ -69,21 +75,68 @@ export function RecipeFormPage() {
     }
   });
 
+  const onPickPhoto = () => fileInputRef.current?.click();
+
+  const onPhotoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permet de reprendre la même photo si besoin
+    if (!file) return;
+
+    setExtractError(null);
+    try {
+      const image = await compressImage(file);
+      const draft = await extractRecipe.mutateAsync(image);
+      reset({
+        title: draft.title || "",
+        servings: draft.servings,
+        prepTimeMinutes: null,
+        cookTimeMinutes: null,
+        notes: null,
+        ingredients:
+          draft.ingredients.length > 0
+            ? draft.ingredients
+            : [{ name: "", quantity: null, unit: null }],
+        steps: draft.steps.length > 0 ? draft.steps.map((text) => ({ text })) : [{ text: "" }],
+      });
+    } catch (err) {
+      setExtractError(
+        err instanceof ApiError
+          ? err.message
+          : "Impossible d'analyser cette photo. Réessayez, ou remplissez le formulaire à la main.",
+      );
+    }
+  };
+
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-8">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <h1 className="font-display text-2xl font-semibold text-(--color-text)">
           Nouvelle recette
         </h1>
-        <button
-          type="button"
-          className="rounded-full border border-(--color-surface-line) px-4 py-2 text-sm font-medium text-(--color-text-muted)"
-          disabled
-          title="Prérempli une fois l'extraction IA branchée (voir ARCHITECTURE.md)"
-        >
-          Importer depuis une photo
-        </button>
+        <div className="flex flex-col items-end gap-1">
+          <button
+            type="button"
+            onClick={onPickPhoto}
+            disabled={extractRecipe.isPending}
+            className="rounded-full border border-(--color-surface-line) px-4 py-2 text-sm font-medium text-(--color-text) hover:border-(--color-plum) disabled:opacity-60"
+          >
+            {extractRecipe.isPending ? "Analyse en cours…" : "Importer depuis une photo"}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={onPhotoSelected}
+            className="hidden"
+          />
+          {extractError && <span className="text-xs text-red-600">{extractError}</span>}
+        </div>
       </div>
+      <p className="-mt-6 text-xs text-(--color-text-muted)">
+        L'IA prérempli le formulaire depuis la photo — relisez et corrigez avant d'enregistrer,
+        rien n'est sauvegardé automatiquement.
+      </p>
 
       <label className="flex flex-col gap-1.5">
         <span className="text-sm font-medium text-(--color-text)">Titre</span>

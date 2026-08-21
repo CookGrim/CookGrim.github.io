@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Recipe, RecipeInput, RecipeSummary, SharedRecipe } from "../../types/recipe";
+import type {
+  ExtractedRecipe,
+  Recipe,
+  RecipeInput,
+  RecipeSummary,
+  SharedRecipe,
+} from "../../types/recipe";
+import type { CompressedImage } from "../compress-image";
 
 export function useRecipes() {
   return useQuery({
@@ -46,6 +53,16 @@ export function useUnshareRecipe(id: string) {
   return useMutation({
     mutationFn: () => api.del(`/api/recipes/${id}/share`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["recipes", id] }),
+  });
+}
+
+export function useExtractRecipe() {
+  return useMutation({
+    mutationFn: (image: CompressedImage) =>
+      api.post<ExtractedRecipe>("/api/recipes/extract", {
+        imageBase64: image.base64,
+        mediaType: image.mediaType,
+      }),
   });
 }
 
