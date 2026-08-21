@@ -1,4 +1,5 @@
-// Modèle de données CookGrim — reflète le schéma Postgres (voir supabase/schema.sql).
+// Modèle de données CookGrim — reflète les réponses JSON de apps/api
+// (voir apps/api/src/db/schema.ts et apps/api/src/routes/recipes.ts).
 
 export type Ingredient = {
   id: string;
@@ -14,7 +15,8 @@ export type Step = {
   text: string;
 };
 
-export type Recipe = {
+// GET /api/recipes — liste, sans ingrédients/étapes
+export type RecipeSummary = {
   id: string;
   userId: string;
   title: string;
@@ -24,44 +26,24 @@ export type Recipe = {
   photoUrl: string | null;
   notes: string | null;
   shareToken: string | null;
-  ingredients: Ingredient[];
-  steps: Step[];
   createdAt: string;
   updatedAt: string;
 };
 
-export type ShoppingListItem = {
-  id: string;
-  name: string;
-  quantity: number | null;
-  unit: string | null;
-  category: string | null;
-  checked: boolean;
-  position: number;
-  sourceRecipeIds: string[];
+// GET /api/recipes/:id — détail complet
+export type Recipe = RecipeSummary & {
+  ingredients: Ingredient[];
+  steps: Step[];
 };
 
-export type ShoppingList = {
-  id: string;
-  userId: string;
-  name: string;
-  items: ShoppingListItem[];
-  createdAt: string;
-};
-
-// Champs éditables d'un formulaire recette, avant qu'un id/timestamps existent.
-export type RecipeDraft = Omit<
-  Recipe,
-  "id" | "userId" | "shareToken" | "createdAt" | "updatedAt"
->;
-
-export const emptyRecipeDraft: RecipeDraft = {
-  title: "",
-  servings: 4,
-  prepTimeMinutes: null,
-  cookTimeMinutes: null,
-  photoUrl: null,
-  notes: null,
-  ingredients: [],
-  steps: [],
+// Champs envoyés par le formulaire de création/édition.
+export type RecipeInput = {
+  title: string;
+  servings: number | null;
+  prepTimeMinutes: number | null;
+  cookTimeMinutes: number | null;
+  photoUrl: string | null;
+  notes: string | null;
+  ingredients: { name: string; quantity: number | null; unit: string | null }[];
+  steps: { text: string }[];
 };

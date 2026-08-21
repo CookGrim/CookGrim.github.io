@@ -148,10 +148,15 @@ redéploie les deux services.
 1. **Setup** ✅ — monorepo, schéma Drizzle/Turso, auth Better Auth, API Hono
    testée de bout en bout (sign-up, session, CRUD recettes, agrégation liste
    de courses, partage public).
-2. **Brancher le frontend** — `apps/web` appelle réellement `apps/api`
-   (TanStack Query sur `src/lib/api.ts`), écrans de connexion/inscription.
-   *(Le frontend actuel garde son état local — même perimètre que le
-   premier scaffold Supabase, qui n'était pas non plus branché.)*
+2. **Brancher le frontend** ✅ — écrans de connexion/inscription
+   (`better-auth/react`, cookie de session), `RecipesPage`/`RecipeFormPage`
+   branchés sur l'API réelle (TanStack Query), sélection de recettes +
+   multiplicateur → génération de liste de courses, écran de liste avec
+   cases à cocher. Testé de bout en bout (sign-up, création de recette,
+   génération de liste, coche d'article).
+   - Cookie de session cross-site (web/api sur deux domaines Render
+     différents) : `advanced.defaultCookieAttributes` force
+     `SameSite=None; Secure` en production uniquement (voir `auth.ts`).
 3. **Prefill photo → IA** — la route `POST /api/recipes/extract` existe et
    fonctionne (testable dès qu'`ANTHROPIC_API_KEY` est renseignée) ; reste à
    la brancher au formulaire (upload photo → prefill → relecture).

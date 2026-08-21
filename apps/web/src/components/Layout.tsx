@@ -1,4 +1,5 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { signOut, useSession } from "../lib/auth-client";
 
 const navItems = [
   { to: "/", label: "Recettes", end: true },
@@ -6,6 +7,14 @@ const navItems = [
 ];
 
 export function Layout() {
+  const navigate = useNavigate();
+  const { data: session } = useSession();
+
+  const onSignOut = async () => {
+    await signOut();
+    navigate("/login", { replace: true });
+  };
+
   return (
     <div className="flex min-h-svh flex-col">
       <header className="border-b border-(--color-surface-line)">
@@ -16,7 +25,7 @@ export function Layout() {
               CookGrim
             </span>
           </NavLink>
-          <nav className="flex gap-1">
+          <nav className="flex items-center gap-1">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
@@ -33,6 +42,16 @@ export function Layout() {
                 {item.label}
               </NavLink>
             ))}
+            {session && (
+              <button
+                type="button"
+                onClick={onSignOut}
+                className="ml-2 rounded-full px-4 py-2 text-sm font-medium text-(--color-text-muted) hover:text-(--color-text)"
+                title={session.user.email}
+              >
+                Se déconnecter
+              </button>
+            )}
           </nav>
         </div>
       </header>

@@ -2,10 +2,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useFieldArray, useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
+import { ApiError } from "../lib/api";
+import { useCreateRecipe } from "../lib/queries/recipes";
 
 const recipeSchema = z.object({
   title: z.string().min(1, "Le titre est obligatoire."),
   servings: z.coerce.number().int().positive().nullable(),
+  prepTimeMinutes: z.coerce.number().int().nonnegative().nullable(),
+  cookTimeMinutes: z.coerce.number().int().nonnegative().nullable(),
   notes: z.string().nullable(),
   ingredients: z
     .array(
@@ -27,19 +31,21 @@ type RecipeFormOutput = z.output<typeof recipeSchema>;
 const defaultValues: RecipeFormInput = {
   title: "",
   servings: 4,
+  prepTimeMinutes: null,
+  cookTimeMinutes: null,
   notes: null,
   ingredients: [{ name: "", quantity: null, unit: null }],
   steps: [{ text: "" }],
 };
 
-// TODO(supabase): remplacer onSubmit par un insert recipes + ingredients +
-// steps dans une transaction (ou trois inserts liés par recipe_id).
 export function RecipeFormPage() {
   const navigate = useNavigate();
+  const createRecipe = useCreateRecipe();
   const {
     register,
     control,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<RecipeFormInput, unknown, RecipeFormOutput>({
     resolver: zodResolver(recipeSchema),
@@ -50,8 +56,17 @@ export function RecipeFormPage() {
   const steps = useFieldArray({ control, name: "steps" });
 
   const onSubmit = handleSubmit(async (values: RecipeFormOutput) => {
-    console.log("[CookGrim] recette à enregistrer :", values);
-    navigate("/");
+    try {
+      await createRecipe.mutateAsync({ ...values, photoUrl: null });
+      navigate("/");
+    } catch (err) {
+      setError("root", {
+        message:
+          err instanceof ApiError
+            ? err.message
+            : "Impossible d'enregistrer la recette. Réessayez.",
+      });
+    }
   });
 
   return (
@@ -80,14 +95,32 @@ export function RecipeFormPage() {
         {errors.title && <span className="text-sm text-red-600">{errors.title.message}</span>}
       </label>
 
-      <label className="flex max-w-40 flex-col gap-1.5">
-        <span className="text-sm font-medium text-(--color-text)">Portions</span>
-        <input
-          type="number"
-          {...register("servings")}
-          className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
-        />
-      </label>
+      <div className="flex gap-4">
+        <label className="flex max-w-32 flex-col gap-1.5">
+          <span className="text-sm font-medium text-(--color-text)">Portions</span>
+          <input
+            type="number"
+            {...register("servings")}
+            className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
+          />
+        </label>
+        <label className="flex max-w-32 flex-col gap-1.5">
+          <span className="text-sm font-medium text-(--color-text)">Préparation (min)</span>
+          <input
+            type="number"
+            {...register("prepTimeMinutes")}
+            className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
+          />
+        </label>
+        <label className="flex max-w-32 flex-col gap-1.5">
+          <span className="text-sm font-medium text-(--color-text)">Cuisson (min)</span>
+          <input
+            type="number"
+            {...register("cookTimeMinutes")}
+            className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
+          />
+        </label>
+      </div>
 
       <fieldset className="flex flex-col gap-3">
         <legend className="mb-1 text-sm font-medium text-(--color-text)">Ingrédients</legend>
@@ -168,6 +201,8 @@ export function RecipeFormPage() {
           className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
         />
       </label>
+
+      {errors.root && <p className="text-sm text-red-600">{errors.root.message}</p>}
 
       <button
         type="submit"
