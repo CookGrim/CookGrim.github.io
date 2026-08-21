@@ -31,6 +31,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// Vrai rejet (le serveur a compris la requête et l'a refusée : validation,
+// auth, 404…) vs. échec transitoire qu'il vaut la peine de rejouer plus
+// tard : pas de réseau (fetch rejette sans réponse), ou 5xx — y compris le
+// 502 que le proxy Vite renvoie en dev quand apps/api est injoignable, qui
+// n'est pas une exception réseau classique mais doit être traité pareil.
+export function isRetryableError(err: unknown): boolean {
+  return !(err instanceof ApiError) || err.status >= 500;
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body: unknown) =>

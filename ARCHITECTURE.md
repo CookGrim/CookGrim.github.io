@@ -164,8 +164,21 @@ redéploie les deux services.
    `reset()` — rien n'est jamais sauvegardé sans relecture. Testé sans
    `ANTHROPIC_API_KEY` (erreur 501 propre, affichée à l'utilisateur) ;
    reste à tester avec une vraie clé une fois renseignée.
-4. **Offline-first** — cache de lecture (Workbox, déjà configuré), file
-   d'écriture hors-ligne à ajouter.
+4. **Offline-first** ✅ (partiel) — cache de lecture (Workbox). File
+   d'écriture hors-ligne pour la coche des articles de liste de courses
+   (le geste le plus courant hors connexion — au magasin) :
+   `src/lib/offline-queue.ts` (file persistée en IndexedDB, via `idb`),
+   `src/lib/offline-sync.ts` (rejeu à la reconnexion, `window`'s `online`),
+   mise à jour optimiste + bannière "N modification(s) en attente" dans
+   `Layout`. `isRetryableError` (`src/lib/api.ts`) décide ce qui part en
+   file (échec réseau ou 5xx transitoire) vs. ce qui remonte tel quel
+   (4xx — vraie erreur de validation/droits). Testé en réel : API coupée →
+   coche conservée à l'écran et mise en file → API relancée → rejouée et
+   persistée côté serveur.
+   - **Scope actuel** : seule la coche d'article est mise en file. Créer/
+     supprimer une recette, générer une liste, partager restent des actions
+     qui nécessitent d'être en ligne (pas de gestion d'ID temporaires /
+     réconciliation pour ces cas plus complexes).
 5. **Partage & export** ✅ — `RecipeDetailPage` (générer/révoquer un lien
    public, bouton PDF), `SharedRecipePage` publique (`/r/:token`, sans
    notes) avec import dans ses propres recettes si connecté. Export PDF

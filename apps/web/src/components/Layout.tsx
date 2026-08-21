@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { signOut, useSession } from "../lib/auth-client";
+import { useOfflineQueueCount } from "../lib/hooks/use-offline-queue-count";
 
 const navItems = [
   { to: "/", label: "Recettes", end: true },
@@ -9,6 +10,7 @@ const navItems = [
 export function Layout() {
   const navigate = useNavigate();
   const { data: session } = useSession();
+  const pendingCount = useOfflineQueueCount();
 
   const onSignOut = async () => {
     await signOut();
@@ -69,6 +71,12 @@ export function Layout() {
           </nav>
         </div>
       </header>
+      {pendingCount > 0 && (
+        <div className="bg-(--color-saffron) px-6 py-2 text-center text-sm font-medium text-(--color-plum)">
+          Hors-ligne — {pendingCount} modification{pendingCount > 1 ? "s" : ""} en attente de
+          synchronisation
+        </div>
+      )}
       <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-8">
         <Outlet />
       </main>
