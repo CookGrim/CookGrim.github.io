@@ -187,6 +187,21 @@ redéploie les deux services.
    `src/lib/recipe-pdf.tsx`).
 6. **Partage ciblé compte-à-compte (v2)** — table `recipeShares`.
 7. **Stockage photo** — Cloudflare R2 si le besoin se confirme.
+8. **Polish** ✅ (partiel) — recherche (titre, insensible aux accents) +
+   tri (récent/alphabétique) sur `RecipesPage`. Manifest PWA complété
+   (`id`, `scope`, `categories`, un raccourci "Nouvelle recette") et
+   `navigateFallback` ajouté à Workbox pour que recharger une route
+   profonde (ex. `/recettes/xyz`) hors-ligne serve l'app shell au lieu
+   d'une erreur navigateur. Vérifié : manifeste valide et servi
+   correctement, `sw.js` généré avec la bonne liste de précache
+   (`node --check` + inspection du bundle). **Non vérifié dans cet
+   environnement** : l'enregistrement réel du service worker a échoué
+   dans le navigateur sandboxé de l'outil (erreur générique de
+   fetch du script alors que `curl` le sert très bien) — probablement une
+   limite de l'outil plutôt qu'un bug, mais à confirmer avec un vrai
+   Lighthouse (Chrome DevTools → Application/Lighthouse) sur l'URL Render
+   déployée. Recherche/tags par ingrédient restent hors scope (les
+   ingrédients ne sont pas chargés dans la liste).
 
 ---
 

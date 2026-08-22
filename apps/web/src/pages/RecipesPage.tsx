@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { normalizeText } from "../lib/normalize-text";
 import { useCreateShoppingList } from "../lib/queries/shopping-lists";
 import { useDeleteRecipe, useRecipes } from "../lib/queries/recipes";
+
+type SortOrder = "recent" | "alpha";
 
 export function RecipesPage() {
   const navigate = useNavigate();
@@ -10,8 +13,22 @@ export function RecipesPage() {
   const createShoppingList = useCreateShoppingList();
 
   const [multipliers, setMultipliers] = useState<Record<string, number>>({});
+  const [search, setSearch] = useState("");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("recent");
 
   const selectedIds = Object.keys(multipliers);
+
+  const visibleRecipes = useMemo(() => {
+    if (!recipes) return [];
+    const query = normalizeText(search);
+    const filtered = query
+      ? recipes.filter((recipe) => normalizeText(recipe.title).includes(query))
+      : recipes;
+    if (sortOrder === "alpha") {
+      return [...filtered].sort((a, b) => a.title.localeCompare(b.title, "fr"));
+    }
+    return filtered; // déjà trié par date de mise à jour (voir l'API)
+  }, [recipes, search, sortOrder]);
 
   const toggleSelected = (id: string) => {
     setMultipliers((prev) => {
@@ -60,8 +77,36 @@ export function RecipesPage() {
       )}
 
       {recipes && recipes.length > 0 && (
+        <div className="flex gap-3">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Rechercher une recette…"
+            aria-label="Rechercher une recette par titre"
+            className="flex-1 rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
+          />
+          <select
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value as SortOrder)}
+            aria-label="Trier les recettes"
+            className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-sm text-(--color-text)"
+          >
+            <option value="recent">Plus récentes</option>
+            <option value="alpha">Alphabétique</option>
+          </select>
+        </div>
+      )}
+
+      {recipes && recipes.length > 0 && visibleRecipes.length === 0 && (
+        <p className="text-sm text-(--color-text-muted)">
+          Aucune recette ne correspond à « {search} ».
+        </p>
+      )}
+
+      {visibleRecipes.length > 0 && (
         <ul className="flex flex-col gap-3">
-          {recipes.map((recipe) => {
+          {visibleRecipes.map((recipe) => {
             const isSelected = recipe.id in multipliers;
             return (
               <li
