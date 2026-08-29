@@ -2,15 +2,22 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { normalizeText } from "../lib/normalize-text";
 import { useCreateShoppingList } from "../lib/queries/shopping-lists";
-import { useDeleteRecipe, useRecipes } from "../lib/queries/recipes";
+import { useDeleteRecipe, useMissingCounts, useRecipes } from "../lib/queries/recipes";
 
 type SortOrder = "recent" | "alpha";
 
 export function RecipesPage() {
   const navigate = useNavigate();
   const { data: recipes, isLoading, isError } = useRecipes();
+  const { data: missingCounts } = useMissingCounts();
   const deleteRecipe = useDeleteRecipe();
   const createShoppingList = useCreateShoppingList();
+
+  const missingByRecipe = useMemo(() => {
+    const map = new Map<string, { missingCount: number; totalCount: number }>();
+    for (const entry of missingCounts ?? []) map.set(entry.recipeId, entry);
+    return map;
+  }, [missingCounts]);
 
   const [multipliers, setMultipliers] = useState<Record<string, number>>({});
   const [search, setSearch] = useState("");
@@ -47,7 +54,9 @@ export function RecipesPage() {
     const list = await createShoppingList.mutateAsync({
       recipes: selectedIds.map((recipeId) => ({ recipeId, multiplier: multipliers[recipeId] })),
     });
-    navigate(`/courses/${list.id}`);
+    // Info ponctuelle (pas persistée) : passée via l'état de navigation pour
+    // s'afficher une fois sur l'écran de la liste, voir ShoppingListDetailPage.
+    navigate(`/courses/${list.id}`, { state: { pantryDeductedCount: list.pantryDeductedCount } });
   };
 
   return (
@@ -77,20 +86,20 @@ export function RecipesPage() {
       )}
 
       {recipes && recipes.length > 0 && (
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Rechercher une recette…"
             aria-label="Rechercher une recette par titre"
-            className="flex-1 rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
+            className="min-w-0 flex-1 rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
           />
           <select
             value={sortOrder}
             onChange={(e) => setSortOrder(e.target.value as SortOrder)}
             aria-label="Trier les recettes"
-            className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-sm text-(--color-text)"
+            className="w-full min-w-0 shrink-0 rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-sm text-(--color-text) sm:w-auto"
           >
             <option value="recent">Plus récentes</option>
             <option value="alpha">Alphabétique</option>
@@ -108,6 +117,7 @@ export function RecipesPage() {
         <ul className="flex flex-col gap-3">
           {visibleRecipes.map((recipe) => {
             const isSelected = recipe.id in multipliers;
+            const missing = missingByRecipe.get(recipe.id);
             return (
               <li
                 key={recipe.id}
@@ -127,6 +137,19 @@ export function RecipesPage() {
                   <p className="text-sm text-(--color-text-muted)">
                     {recipe.servings ? `${recipe.servings} portions` : "Portions non précisées"}
                   </p>
+                  {missing && (
+                    <p
+                      className={`text-sm ${
+                        missing.missingCount === 0
+                          ? "text-(--color-mint)"
+                          : "text-(--color-text-muted)"
+                      }`}
+                    >
+                      {missing.missingCount === 0
+                        ? "Tout y est dans le stock"
+                        : `${missing.missingCount} ingrédient${missing.missingCount > 1 ? "s" : ""} manquant${missing.missingCount > 1 ? "s" : ""} sur ${missing.totalCount}`}
+                    </p>
+                  )}
                 </Link>
                 {isSelected && (
                   <label className="flex items-center gap-1.5 text-sm text-(--color-text-muted)">

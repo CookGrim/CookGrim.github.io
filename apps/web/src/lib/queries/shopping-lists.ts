@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, isRetryableError } from "../api";
 import { enqueue } from "../offline-queue";
 import type {
+  CreatedShoppingList,
   CreateShoppingListInput,
   ShoppingList,
   ShoppingListSummary,
@@ -26,7 +27,27 @@ export function useCreateShoppingList() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateShoppingListInput) =>
-      api.post<ShoppingList>("/api/shopping-lists", input),
+      api.post<CreatedShoppingList>("/api/shopping-lists", input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shopping-lists"] }),
+  });
+}
+
+export function useRenameShoppingList() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      api.patch<void>(`/api/shopping-lists/${id}`, { name }),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["shopping-lists"] });
+      queryClient.invalidateQueries({ queryKey: ["shopping-lists", id] });
+    },
+  });
+}
+
+export function useDeleteShoppingList() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/api/shopping-lists/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["shopping-lists"] }),
   });
 }
@@ -69,6 +90,15 @@ export function useToggleShoppingListItem(listId: string) {
       if (!isRetryableError(err) && context?.previous) {
         queryClient.setQueryData(queryKey, context.previous);
       }
+    },
+    onSuccess: () => {
+      // Cocher/décocher ajuste le stock côté serveur (voir
+      // planPantryAdjustment) — on invalide pour que "Mon stock" et les
+      // badges "manquants" reflètent le changement. Sans effet néfaste si la
+      // requête a en fait été mise en file (pas encore appliquée) : c'est
+      // drainOfflineQueue qui invalide pour de bon une fois rejouée.
+      queryClient.invalidateQueries({ queryKey: ["pantry"] });
+      queryClient.invalidateQueries({ queryKey: ["recipes", "missing-counts"] });
     },
   });
 }

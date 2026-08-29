@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type {
   ExtractedRecipe,
+  MissingCount,
   Recipe,
   RecipeInput,
   RecipeSummary,
@@ -13,6 +14,16 @@ export function useRecipes() {
   return useQuery({
     queryKey: ["recipes"],
     queryFn: () => api.get<RecipeSummary[]>("/api/recipes"),
+  });
+}
+
+// Nombre d'ingrédients manquants par recette, comparé au stock courant —
+// alimente le badge sur RecipesPage. Recalculé à chaque changement de stock
+// ou de recette (voir invalidations dans queries/pantry.ts).
+export function useMissingCounts() {
+  return useQuery({
+    queryKey: ["recipes", "missing-counts"],
+    queryFn: () => api.get<MissingCount[]>("/api/recipes/missing-counts"),
   });
 }
 

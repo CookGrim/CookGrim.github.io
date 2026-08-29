@@ -2,8 +2,9 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db/client.js";
-import { ingredients, recipes, shoppingListItems, shoppingLists } from "../db/schema.js";
+import { ingredients, pantryItems, recipes, shoppingListItems, shoppingLists } from "../db/schema.js";
 import { aggregateIngredients } from "../lib/aggregate-ingredients.js";
+import { deductPantryFromAggregated, planPantryAdjustment } from "../lib/pantry-match.js";
 import { requireAuth } from "../middleware/require-auth.js";
 import type { AppEnv } from "../types.js";
 
@@ -65,10 +66,10 @@ shoppingListsRoute.post("/", async (c) => {
     return c.json({ message: "Une ou plusieurs recettes sont introuvables." }, 404);
   }
 
-  const allIngredients = await db
-    .select()
-    .from(ingredients)
-    .where(inArray(ingredients.recipeId, recipeIds));
+  const [allIngredients, pantry] = await Promise.all([
+    db.select().from(ingredients).where(inArray(ingredients.recipeId, recipeIds)),
+    db.select().from(pantryItems).where(eq(pantryItems.userId, user.id)),
+  ]);
 
   const multipliers = Object.fromEntries(selection.map((s) => [s.recipeId, s.multiplier]));
   const aggregated = aggregateIngredients(
@@ -81,15 +82,21 @@ shoppingListsRoute.post("/", async (c) => {
     multipliers,
   );
 
+  // Ce qu'il reste réellement à acheter une fois le stock déduit — une ligne
+  // entièrement couverte disparaît, une ligne partielle ne garde que le
+  // manquant (voir lib/pantry-match.ts).
+  const toBuy = deductPantryFromAggregated(aggregated, pantry);
+  const pantryDeductedCount = aggregated.length - toBuy.length;
+
   const created = await db.transaction(async (tx) => {
     const [list] = await tx
       .insert(shoppingLists)
       .values({ userId: user.id, name: name ?? "Liste de courses" })
       .returning();
 
-    if (aggregated.length > 0) {
+    if (toBuy.length > 0) {
       await tx.insert(shoppingListItems).values(
-        aggregated.map((item, position) => ({
+        toBuy.map((item, position) => ({
           shoppingListId: list.id,
           name: item.name,
           quantity: item.quantity,
@@ -106,12 +113,16 @@ shoppingListsRoute.post("/", async (c) => {
     .select()
     .from(shoppingListItems)
     .where(eq(shoppingListItems.shoppingListId, created.id));
-  return c.json({ ...created, items }, 201);
+  // pantryDeductedCount n'est pas persisté : c'est une info ponctuelle pour
+  // le front au moment de la génération ("N articles déjà dans votre stock").
+  return c.json({ ...created, items, pantryDeductedCount }, 201);
 });
 
 const patchItemInput = z.object({ checked: z.boolean() });
 
-// PATCH /api/shopping-lists/:id/items/:itemId — coche/décoche une ligne
+// PATCH /api/shopping-lists/:id/items/:itemId — coche/décoche une ligne.
+// Cocher = acheté : on ajoute la quantité au stock. Décocher = annulation :
+// on la retire (voir lib/pantry-match.ts, planPantryAdjustment).
 shoppingListsRoute.patch("/:id/items/:itemId", async (c) => {
   const user = c.get("user");
   const { id, itemId } = c.req.param();
@@ -124,11 +135,63 @@ shoppingListsRoute.patch("/:id/items/:itemId", async (c) => {
     .where(and(eq(shoppingLists.id, id), eq(shoppingLists.userId, user.id)));
   if (!list) return c.json({ message: "Liste introuvable." }, 404);
 
+  const [item] = await db
+    .select()
+    .from(shoppingListItems)
+    .where(and(eq(shoppingListItems.id, itemId), eq(shoppingListItems.shoppingListId, id)));
+  if (!item) return c.json({ message: "Article introuvable." }, 404);
+
   await db
     .update(shoppingListItems)
     .set({ checked: parsed.data.checked })
     .where(and(eq(shoppingListItems.id, itemId), eq(shoppingListItems.shoppingListId, id)));
 
+  if (parsed.data.checked !== item.checked) {
+    const pantry = await db.select().from(pantryItems).where(eq(pantryItems.userId, user.id));
+    const adjustment = planPantryAdjustment(
+      { name: item.name, quantity: item.quantity, unit: item.unit },
+      pantry,
+      parsed.data.checked ? 1 : -1,
+    );
+
+    if (adjustment.kind === "update") {
+      await db
+        .update(pantryItems)
+        .set({ quantity: adjustment.quantity, updatedAt: new Date().toISOString() })
+        .where(eq(pantryItems.id, adjustment.id));
+    } else if (adjustment.kind === "create") {
+      await db.insert(pantryItems).values({
+        userId: user.id,
+        name: adjustment.name,
+        quantity: adjustment.quantity,
+        unit: adjustment.unit,
+      });
+    }
+  }
+
+  return c.body(null, 204);
+});
+
+const renameInput = z.object({
+  name: z.string().trim().min(1, "Le nom est requis.").max(60, "60 caractères maximum."),
+});
+
+// PATCH /api/shopping-lists/:id — renomme une liste
+shoppingListsRoute.patch("/:id", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+  const parsed = renameInput.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return c.json({ message: "Requête invalide.", issues: parsed.error.issues }, 400);
+  }
+
+  const [list] = await db
+    .select({ id: shoppingLists.id })
+    .from(shoppingLists)
+    .where(and(eq(shoppingLists.id, id), eq(shoppingLists.userId, user.id)));
+  if (!list) return c.json({ message: "Liste introuvable." }, 404);
+
+  await db.update(shoppingLists).set({ name: parsed.data.name }).where(eq(shoppingLists.id, id));
   return c.body(null, 204);
 });
 

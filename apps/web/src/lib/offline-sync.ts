@@ -46,8 +46,11 @@ export async function drainOfflineQueue() {
     if (hadSuccess) {
       // Les données côté serveur ont peut-être changé entre-temps :
       // on laisse React Query rafraîchir tout ce qui pourrait être affecté.
+      // Une coche rejouée ici a pu ajuster le stock (planPantryAdjustment),
+      // d'où l'invalidation de "pantry" en plus.
       await queryClient.invalidateQueries({ queryKey: ["shopping-lists"] });
       await queryClient.invalidateQueries({ queryKey: ["recipes"] });
+      await queryClient.invalidateQueries({ queryKey: ["pantry"] });
     }
   } finally {
     isDraining = false;

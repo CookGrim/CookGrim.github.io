@@ -16,11 +16,14 @@ export type AggregatedItem = {
   sourceRecipeIds: string[];
 };
 
-function normalizeName(name: string) {
+// Exportées : réutilisées par lib/pantry-match.ts pour rapprocher un
+// ingrédient de recette d'une ligne de stock avec la même règle de
+// normalisation que pour fusionner les lignes d'une liste de courses.
+export function normalizeName(name: string) {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function normalizeUnit(unit: string | null) {
+export function normalizeUnit(unit: string | null) {
   return (unit ?? "").trim().toLowerCase();
 }
 

@@ -1,4 +1,4 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { useShoppingList, useToggleShoppingListItem } from "../lib/queries/shopping-lists";
 import type { ShoppingListItem } from "../types/shopping-list";
 
@@ -12,6 +12,11 @@ export function ShoppingListDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: list, isLoading, isError } = useShoppingList(id);
   const toggleItem = useToggleShoppingListItem(id ?? "");
+  // Info ponctuelle passée par RecipesPage juste après la génération — pas
+  // dans les données de la liste, disparaît si l'écran est rechargé.
+  const location = useLocation();
+  const pantryDeductedCount = (location.state as { pantryDeductedCount?: number } | null)
+    ?.pantryDeductedCount;
 
   if (isLoading) return <p className="text-(--color-text-muted)">Chargement…</p>;
   if (isError || !list) return <p className="text-sm text-red-600">Liste introuvable.</p>;
@@ -30,6 +35,13 @@ export function ShoppingListDetailPage() {
         <p className="text-sm text-(--color-text-muted)">
           {remaining === 0 ? "Tout est dans le panier 🎉" : `${remaining} article${remaining > 1 ? "s" : ""} restant${remaining > 1 ? "s" : ""}`}
         </p>
+        {Boolean(pantryDeductedCount) && (
+          <p className="mt-1 text-sm text-(--color-mint)">
+            {pantryDeductedCount} article{pantryDeductedCount! > 1 ? "s" : ""} déjà couvert
+            {pantryDeductedCount! > 1 ? "s" : ""} par votre stock — retiré{pantryDeductedCount! > 1 ? "s" : ""} ou réduit
+            {pantryDeductedCount! > 1 ? "s" : ""} à la quantité manquante.
+          </p>
+        )}
       </div>
 
       <ul className="flex flex-col gap-2">

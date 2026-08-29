@@ -52,6 +52,21 @@ export const steps = sqliteTable("steps", {
   text: text("text").notNull(),
 });
 
+export const pantryItems = sqliteTable("pantry_items", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  quantity: real("quantity"), // null = "j'en ai", quantité non suivie
+  unit: text("unit"),
+  updatedAt: text("updated_at")
+    .notNull()
+    .default(sql`(current_timestamp)`),
+});
+
 export const shoppingLists = sqliteTable("shopping_lists", {
   id: text("id")
     .primaryKey()

@@ -1,8 +1,9 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db/client.js";
-import { ingredients, recipes, steps } from "../db/schema.js";
+import { ingredients, pantryItems, recipes, steps } from "../db/schema.js";
+import { computeMissing } from "../lib/pantry-match.js";
 import { requireAuth } from "../middleware/require-auth.js";
 import type { AppEnv } from "../types.js";
 
@@ -105,6 +106,38 @@ recipesRoute.post("/", requireAuth, async (c) => {
   });
 
   return c.json(await loadFullRecipe(created.id), 201);
+});
+
+// GET /api/recipes/missing-counts — nombre d'ingrédients manquants par
+// recette, comparé au stock courant (voir lib/pantry-match.ts). Enregistrée
+// avant /:id pour ne jamais être capturée par ce paramètre dynamique.
+recipesRoute.get("/missing-counts", requireAuth, async (c) => {
+  const user = c.get("user");
+  const userRecipes = await db
+    .select({ id: recipes.id })
+    .from(recipes)
+    .where(eq(recipes.userId, user.id));
+  const recipeIds = userRecipes.map((r) => r.id);
+  if (recipeIds.length === 0) return c.json([]);
+
+  const [allIngredients, pantry] = await Promise.all([
+    db.select().from(ingredients).where(inArray(ingredients.recipeId, recipeIds)),
+    db.select().from(pantryItems).where(eq(pantryItems.userId, user.id)),
+  ]);
+
+  const ingredientsByRecipe = new Map<string, typeof allIngredients>();
+  for (const ing of allIngredients) {
+    const list = ingredientsByRecipe.get(ing.recipeId);
+    if (list) list.push(ing);
+    else ingredientsByRecipe.set(ing.recipeId, [ing]);
+  }
+
+  const result = recipeIds.map((recipeId) => ({
+    recipeId,
+    ...computeMissing(ingredientsByRecipe.get(recipeId) ?? [], pantry),
+  }));
+
+  return c.json(result);
 });
 
 // GET /api/recipes/:id — détail (propriétaire uniquement)

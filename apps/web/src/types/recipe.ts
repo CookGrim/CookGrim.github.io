@@ -40,6 +40,14 @@ export type Recipe = RecipeSummary & {
 // GET /api/recipes/shared/:token — vue publique, sans notes ni userId
 export type SharedRecipe = Omit<Recipe, "notes" | "userId">;
 
+// GET /api/recipes/missing-counts — ingrédients manquants par recette,
+// comparés au stock courant (voir apps/api/src/lib/pantry-match.ts).
+export type MissingCount = {
+  recipeId: string;
+  missingCount: number;
+  totalCount: number;
+};
+
 // Réponse de POST /api/recipes/extract — brouillon à relire, jamais
 // sauvegardé automatiquement.
 export type ExtractedRecipe = {

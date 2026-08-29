@@ -3,6 +3,7 @@ import { Layout } from "./components/Layout";
 import { RequireAuth } from "./components/RequireAuth";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { PantryPage } from "./pages/PantryPage";
 import { RecipeDetailPage } from "./pages/RecipeDetailPage";
 import { RecipeFormPage } from "./pages/RecipeFormPage";
 import { RecipesPage } from "./pages/RecipesPage";
@@ -25,6 +26,7 @@ function App() {
           <Route path="recettes/:id" element={<RecipeDetailPage />} />
           <Route path="courses" element={<ShoppingListsPage />} />
           <Route path="courses/:id" element={<ShoppingListDetailPage />} />
+          <Route path="stock" element={<PantryPage />} />
         </Route>
       </Route>
 

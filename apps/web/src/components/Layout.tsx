@@ -5,6 +5,7 @@ import { useOfflineQueueCount } from "../lib/hooks/use-offline-queue-count";
 const navItems = [
   { to: "/", label: "Recettes", end: true },
   { to: "/courses", label: "Liste de courses" },
+  { to: "/stock", label: "Mon stock" },
 ];
 
 export function Layout() {

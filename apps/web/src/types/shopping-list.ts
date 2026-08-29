@@ -27,3 +27,8 @@ export type CreateShoppingListInput = {
   name?: string;
   recipes: { recipeId: string; multiplier: number }[];
 };
+
+// Réponse de POST /api/shopping-lists uniquement — pantryDeductedCount n'est
+// pas persisté, c'est une info ponctuelle sur ce que le stock a permis de
+// retirer/réduire au moment de la génération.
+export type CreatedShoppingList = ShoppingList & { pantryDeductedCount: number };
