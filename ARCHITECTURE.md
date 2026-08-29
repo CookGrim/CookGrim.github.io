@@ -19,7 +19,7 @@ code sur **GitHub**, base de données **Turso**.
 | Base de données | Turso (SQLite/libSQL) via `@libsql/client` |
 | ORM / migrations | Drizzle ORM + drizzle-kit |
 | Auth | Better Auth (pseudo + code à 4 chiffres, email interne dérivé du pseudo), adaptateur Drizzle/SQLite |
-| Vision IA (prefill photo) | Claude (`@anthropic-ai/sdk`), appelé depuis une route serveur (`POST /api/recipes/extract`) |
+| Vision IA (prefill photo) | Gemini (`@google/genai`, palier gratuit), appelé depuis une route serveur (`POST /api/recipes/extract`) |
 | État serveur / cache (front) | TanStack Query |
 | Formulaires | React Hook Form + Zod |
 | Hébergement | Render (Web Service pour l'API, Static Site pour le front) |
@@ -134,7 +134,7 @@ réel — non testé dans cet environnement) :
 1. **cookgrim-api** — Web Service Node, `rootDir` implicite via
    `--workspace=@cookgrim/api`. Variables : `TURSO_DATABASE_URL`,
    `TURSO_AUTH_TOKEN`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`,
-   `WEB_ORIGIN`, `ANTHROPIC_API_KEY`.
+   `WEB_ORIGIN`, `GEMINI_API_KEY`.
 2. **cookgrim-web** — Static Site, publie `apps/web/dist`. Variable :
    `VITE_API_URL` (pointe vers l'URL du service `cookgrim-api`).
 
@@ -162,7 +162,7 @@ redéploie les deux services.
    redimensionnée à 1600px avant envoi), appel à
    `POST /api/recipes/extract`, préremplissage du formulaire via
    `reset()` — rien n'est jamais sauvegardé sans relecture. Testé sans
-   `ANTHROPIC_API_KEY` (erreur 501 propre, affichée à l'utilisateur) ;
+   `GEMINI_API_KEY` (erreur 501 propre, affichée à l'utilisateur) ;
    reste à tester avec une vraie clé une fois renseignée.
 4. **Offline-first** ✅ (partiel) — cache de lecture (Workbox). File
    d'écriture hors-ligne pour la coche des articles de liste de courses
@@ -209,7 +209,7 @@ redéploie les deux services.
 
 - Toujours laisser l'utilisateur relire/corriger l'extraction IA avant
   sauvegarde (jamais d'auto-save direct depuis la photo).
-- `ANTHROPIC_API_KEY` est une variable serveur uniquement (Render), jamais
+- `GEMINI_API_KEY` est une variable serveur uniquement (Render), jamais
   `VITE_*` — elle finirait dans le bundle client.
 - Chaque nouvelle route doit filtrer explicitement par `user_id` : pas de
   RLS pour rattraper un oubli.

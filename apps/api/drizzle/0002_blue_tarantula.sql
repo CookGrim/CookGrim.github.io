@@ -1,0 +1,1 @@
+ALTER TABLE `recipes` ADD `cook_temp_celsius` integer;

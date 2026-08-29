@@ -7,6 +7,24 @@ import {
   useUnshareRecipe,
 } from "../lib/queries/recipes";
 
+// Progression (ingrédients/étapes cochés) purement volatile : elle vit tant
+// que l'affichage de la recette reste monté, et repart de zéro dès qu'on le
+// quitte (le composant appelant remonte ce hook via `key={recipe.id}`).
+function useChecklist() {
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+
+  const toggle = (itemId: string) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  };
+
+  return { checked, toggle };
+}
+
 export function RecipeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -16,6 +34,8 @@ export function RecipeDetailPage() {
   const deleteRecipe = useDeleteRecipe();
   const [copied, setCopied] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const ingredientChecklist = useChecklist();
+  const stepChecklist = useChecklist();
 
   if (isLoading) return <p className="text-(--color-text-muted)">Chargement…</p>;
   if (isError || !recipe) return <p className="text-sm text-red-600">Recette introuvable.</p>;
@@ -28,6 +48,7 @@ export function RecipeDetailPage() {
     recipe.servings ? `${recipe.servings} portions` : null,
     recipe.prepTimeMinutes ? `${recipe.prepTimeMinutes} min de préparation` : null,
     recipe.cookTimeMinutes ? `${recipe.cookTimeMinutes} min de cuisson` : null,
+    recipe.cookTempCelsius ? `${recipe.cookTempCelsius} °C` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -58,7 +79,7 @@ export function RecipeDetailPage() {
   };
 
   return (
-    <div className="flex flex-col gap-8">
+    <div key={recipe.id} className="flex flex-col gap-8">
       <div>
         <Link to="/" className="text-sm text-(--color-plum) underline underline-offset-4">
           ← Mes recettes
@@ -134,30 +155,72 @@ export function RecipeDetailPage() {
       )}
 
       <section>
-        <h2 className="mb-3 font-display text-lg font-semibold text-(--color-text)">
-          Ingrédients
-        </h2>
+        <div className="mb-3 flex items-baseline justify-between gap-2">
+          <h2 className="font-display text-lg font-semibold text-(--color-text)">Ingrédients</h2>
+          <p className="text-xs text-(--color-text-muted)">
+            {ingredientChecklist.checked.size < recipe.ingredients.length
+              ? `${recipe.ingredients.length - ingredientChecklist.checked.size} manquant${recipe.ingredients.length - ingredientChecklist.checked.size > 1 ? "s" : ""}`
+              : "Tout est là ✓"}
+          </p>
+        </div>
         <ul className="flex flex-col gap-1.5">
-          {recipe.ingredients.map((ing) => (
-            <li key={ing.id} className="flex gap-3 text-(--color-text)">
-              <span className="w-24 shrink-0 font-medium tabular-nums text-(--color-text-muted)">
-                {[ing.quantity, ing.unit].filter(Boolean).join(" ")}
-              </span>
-              <span>{ing.name}</span>
-            </li>
-          ))}
+          {recipe.ingredients.map((ing) => {
+            const isChecked = ingredientChecklist.checked.has(ing.id);
+            return (
+              <li key={ing.id}>
+                <label className="flex cursor-pointer items-center gap-3 text-(--color-text)">
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => ingredientChecklist.toggle(ing.id)}
+                    className="size-4 shrink-0 accent-(--color-plum)"
+                  />
+                  <span
+                    className={`w-24 shrink-0 font-medium tabular-nums ${isChecked ? "text-(--color-text-muted) line-through" : "text-(--color-text-muted)"}`}
+                  >
+                    {[ing.quantity, ing.unit].filter(Boolean).join(" ")}
+                  </span>
+                  <span className={isChecked ? "text-(--color-text-muted) line-through" : ""}>
+                    {ing.name}
+                  </span>
+                </label>
+              </li>
+            );
+          })}
         </ul>
       </section>
 
       <section>
-        <h2 className="mb-3 font-display text-lg font-semibold text-(--color-text)">Étapes</h2>
+        <div className="mb-3 flex items-baseline justify-between gap-2">
+          <h2 className="font-display text-lg font-semibold text-(--color-text)">Étapes</h2>
+          <p className="text-xs text-(--color-text-muted)">
+            {stepChecklist.checked.size < recipe.steps.length
+              ? `${recipe.steps.length - stepChecklist.checked.size} restante${recipe.steps.length - stepChecklist.checked.size > 1 ? "s" : ""}`
+              : "Terminé ✓"}
+          </p>
+        </div>
         <ol className="flex flex-col gap-3">
-          {recipe.steps.map((step, i) => (
-            <li key={step.id} className="flex gap-3 text-(--color-text)">
-              <span className="w-6 shrink-0 font-medium text-(--color-text-muted)">{i + 1}.</span>
-              <span>{step.text}</span>
-            </li>
-          ))}
+          {recipe.steps.map((step, i) => {
+            const isChecked = stepChecklist.checked.has(step.id);
+            return (
+              <li key={step.id}>
+                <label className="flex cursor-pointer items-start gap-3 text-(--color-text)">
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => stepChecklist.toggle(step.id)}
+                    className="mt-0.5 size-4 shrink-0 accent-(--color-plum)"
+                  />
+                  <span className="w-6 shrink-0 font-medium text-(--color-text-muted)">
+                    {i + 1}.
+                  </span>
+                  <span className={isChecked ? "text-(--color-text-muted) line-through" : ""}>
+                    {step.text}
+                  </span>
+                </label>
+              </li>
+            );
+          })}
         </ol>
       </section>
 

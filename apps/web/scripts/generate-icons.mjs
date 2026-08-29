@@ -18,11 +18,22 @@ const targets = [
 
 await mkdir(outDir, { recursive: true });
 
+// mark.svg dessine ses propres coins arrondis (rx) sur un carré : le reste
+// du canevas — les quatre coins hors du rect arrondi — est transparent.
+// Toutes nos icônes doivent être des carrés pleins, sans aucune transparence
+// résiduelle : pour les icônes "any", c'est l'OS qui applique son propre
+// masque/arrondi (sans flatten, Android affiche son fond gris par défaut
+// derrière cette transparence — d'où des coins gris autour du logo dans le
+// multitâche) ; pour la maskable, ce sont ces mêmes coins qui, une fois
+// repositionnés à l'intérieur de la safe zone, laisseraient passer de la
+// transparence. Dans les deux cas on aplatit sur la couleur de fond du mark.
+const flatten = (image) => image.flatten({ background: "#3C2350" });
+
 for (const { file, size, padded } of targets) {
-  const image = sharp(source, { density: 384 }).resize(size, size);
   const buffer = padded
-    ? await sharp(source, { density: 384 })
-        .resize(Math.round(size * 0.7), Math.round(size * 0.7))
+    ? await flatten(
+        sharp(source, { density: 384 }).resize(Math.round(size * 0.7), Math.round(size * 0.7)),
+      )
         .extend({
           top: Math.round(size * 0.15),
           bottom: Math.round(size * 0.15),
@@ -32,7 +43,9 @@ for (const { file, size, padded } of targets) {
         })
         .png()
         .toBuffer()
-    : await image.png().toBuffer();
+    : await flatten(sharp(source, { density: 384 }).resize(size, size))
+        .png()
+        .toBuffer();
 
   await sharp(buffer).toFile(resolve(outDir, file));
   console.log(`✓ ${file}`);

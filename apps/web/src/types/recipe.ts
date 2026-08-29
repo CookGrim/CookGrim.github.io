@@ -23,6 +23,7 @@ export type RecipeSummary = {
   servings: number | null;
   prepTimeMinutes: number | null;
   cookTimeMinutes: number | null;
+  cookTempCelsius: number | null;
   photoUrl: string | null;
   notes: string | null;
   shareToken: string | null;
@@ -54,6 +55,7 @@ export type RecipeInput = {
   servings: number | null;
   prepTimeMinutes: number | null;
   cookTimeMinutes: number | null;
+  cookTempCelsius: number | null;
   photoUrl: string | null;
   notes: string | null;
   ingredients: { name: string; quantity: number | null; unit: string | null }[];

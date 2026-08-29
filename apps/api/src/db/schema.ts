@@ -16,6 +16,7 @@ export const recipes = sqliteTable("recipes", {
   servings: integer("servings"),
   prepTimeMinutes: integer("prep_time_minutes"),
   cookTimeMinutes: integer("cook_time_minutes"),
+  cookTempCelsius: integer("cook_temp_celsius"),
   photoUrl: text("photo_url"),
   notes: text("notes"), // zone libre, privée par défaut au partage
   shareToken: text("share_token").unique(), // non-null = lien public actif

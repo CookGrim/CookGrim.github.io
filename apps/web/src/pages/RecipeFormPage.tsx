@@ -1,17 +1,19 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRef, useState } from "react";
-import { useFieldArray, useForm } from "react-hook-form";
+import { Controller, useFieldArray, useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { ApiError } from "../lib/api";
 import { compressImage } from "../lib/compress-image";
 import { useCreateRecipe, useExtractRecipe } from "../lib/queries/recipes";
+import { UNITS } from "../lib/units";
 
 const recipeSchema = z.object({
   title: z.string().min(1, "Le titre est obligatoire."),
   servings: z.coerce.number().int().positive().nullable(),
   prepTimeMinutes: z.coerce.number().int().nonnegative().nullable(),
   cookTimeMinutes: z.coerce.number().int().nonnegative().nullable(),
+  cookTempCelsius: z.coerce.number().int().nonnegative().nullable(),
   notes: z.string().nullable(),
   ingredients: z
     .array(
@@ -35,6 +37,7 @@ const defaultValues: RecipeFormInput = {
   servings: 4,
   prepTimeMinutes: null,
   cookTimeMinutes: null,
+  cookTempCelsius: null,
   notes: null,
   ingredients: [{ name: "", quantity: null, unit: null }],
   steps: [{ text: "" }],
@@ -91,6 +94,7 @@ export function RecipeFormPage() {
         servings: draft.servings,
         prepTimeMinutes: null,
         cookTimeMinutes: null,
+        cookTempCelsius: null,
         notes: null,
         ingredients:
           draft.ingredients.length > 0
@@ -148,60 +152,90 @@ export function RecipeFormPage() {
         {errors.title && <span className="text-sm text-red-600">{errors.title.message}</span>}
       </label>
 
-      <div className="flex gap-4">
-        <label className="flex max-w-32 flex-col gap-1.5">
-          <span className="text-sm font-medium text-(--color-text)">Portions</span>
-          <input
-            type="number"
-            {...register("servings")}
-            className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
-          />
-        </label>
-        <label className="flex max-w-32 flex-col gap-1.5">
-          <span className="text-sm font-medium text-(--color-text)">Préparation (min)</span>
-          <input
-            type="number"
-            {...register("prepTimeMinutes")}
-            className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
-          />
-        </label>
-        <label className="flex max-w-32 flex-col gap-1.5">
-          <span className="text-sm font-medium text-(--color-text)">Cuisson (min)</span>
-          <input
-            type="number"
-            {...register("cookTimeMinutes")}
-            className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
-          />
-        </label>
+      <div className="flex flex-col gap-4">
+        <div className="flex gap-4">
+          <label className="flex max-w-32 flex-col gap-1.5">
+            <span className="text-sm font-medium text-(--color-text)">Portions</span>
+            <input
+              type="number"
+              {...register("servings")}
+              className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
+            />
+          </label>
+          <label className="flex max-w-32 flex-col gap-1.5">
+            <span className="text-sm font-medium text-(--color-text)">Préparation (min)</span>
+            <input
+              type="number"
+              {...register("prepTimeMinutes")}
+              className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
+            />
+          </label>
+        </div>
+        <div className="flex gap-4">
+          <label className="flex max-w-32 flex-col gap-1.5">
+            <span className="text-sm font-medium text-(--color-text)">Cuisson (min)</span>
+            <input
+              type="number"
+              {...register("cookTimeMinutes")}
+              className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
+            />
+          </label>
+          <label className="flex max-w-32 flex-col gap-1.5">
+            <span className="text-sm font-medium text-(--color-text)">Température (°C)</span>
+            <input
+              type="number"
+              {...register("cookTempCelsius")}
+              className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
+            />
+          </label>
+        </div>
       </div>
 
       <fieldset className="flex flex-col gap-3">
         <legend className="mb-1 text-sm font-medium text-(--color-text)">Ingrédients</legend>
         {ingredients.fields.map((field, index) => (
-          <div key={field.id} className="flex gap-2">
-            <input
-              {...register(`ingredients.${index}.quantity`)}
-              placeholder="Qté"
-              className="w-20 rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
-            />
-            <input
-              {...register(`ingredients.${index}.unit`)}
-              placeholder="Unité"
-              className="w-24 rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
-            />
+          <div key={field.id} className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              <input
+                {...register(`ingredients.${index}.quantity`)}
+                placeholder="Qté"
+                className="w-20 rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
+              />
+              <Controller
+                control={control}
+                name={`ingredients.${index}.unit`}
+                render={({ field }) => (
+                  <select
+                    name={field.name}
+                    ref={field.ref}
+                    value={field.value ?? ""}
+                    onChange={(e) => field.onChange(e.target.value || null)}
+                    onBlur={field.onBlur}
+                    className="w-28 rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
+                  >
+                    <option value="">Unité</option>
+                    {UNITS.map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unit}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              />
+              <button
+                type="button"
+                onClick={() => ingredients.remove(index)}
+                className="px-2 text-(--color-text-muted) hover:text-(--color-text)"
+                aria-label="Retirer l'ingrédient"
+              >
+                ✕
+              </button>
+            </div>
             <input
               {...register(`ingredients.${index}.name`)}
               placeholder="Farine"
-              className="flex-1 rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
+              className="w-full rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
             />
-            <button
-              type="button"
-              onClick={() => ingredients.remove(index)}
-              className="px-2 text-(--color-text-muted) hover:text-(--color-text)"
-              aria-label="Retirer l'ingrédient"
-            >
-              ✕
-            </button>
           </div>
         ))}
         {errors.ingredients?.root && (

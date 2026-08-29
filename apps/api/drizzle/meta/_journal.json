@@ -15,6 +15,13 @@
       "when": 1787227498225,
       "tag": "0001_wise_fixer",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788008145172,
+      "tag": "0002_blue_tarantula",
+      "breakpoints": true
     }
   ]
 }

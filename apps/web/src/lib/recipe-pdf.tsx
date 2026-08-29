@@ -36,6 +36,7 @@ export type PdfRecipe = {
   servings: number | null;
   prepTimeMinutes: number | null;
   cookTimeMinutes: number | null;
+  cookTempCelsius: number | null;
   ingredients: Ingredient[];
   steps: Step[];
   notes?: string | null;
@@ -46,6 +47,7 @@ function RecipeDocument({ recipe }: { recipe: PdfRecipe }) {
     recipe.servings ? `${recipe.servings} portions` : null,
     recipe.prepTimeMinutes ? `${recipe.prepTimeMinutes} min de préparation` : null,
     recipe.cookTimeMinutes ? `${recipe.cookTimeMinutes} min de cuisson` : null,
+    recipe.cookTempCelsius ? `${recipe.cookTempCelsius} °C` : null,
   ]
     .filter(Boolean)
     .join("  ·  ");

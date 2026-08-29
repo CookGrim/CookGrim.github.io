@@ -21,6 +21,7 @@ const recipeInput = z.object({
   servings: z.number().int().positive().nullable(),
   prepTimeMinutes: z.number().int().nonnegative().nullable(),
   cookTimeMinutes: z.number().int().nonnegative().nullable(),
+  cookTempCelsius: z.number().int().nonnegative().nullable(),
   photoUrl: z.string().url().nullable(),
   notes: z.string().nullable(),
   ingredients: z.array(ingredientInput).min(1, "Ajoutez au moins un ingrédient."),
@@ -72,6 +73,7 @@ recipesRoute.post("/", requireAuth, async (c) => {
         servings: input.servings,
         prepTimeMinutes: input.prepTimeMinutes,
         cookTimeMinutes: input.cookTimeMinutes,
+        cookTempCelsius: input.cookTempCelsius,
         photoUrl: input.photoUrl,
         notes: input.notes,
       })
@@ -138,6 +140,7 @@ recipesRoute.put("/:id", requireAuth, async (c) => {
         servings: input.servings,
         prepTimeMinutes: input.prepTimeMinutes,
         cookTimeMinutes: input.cookTimeMinutes,
+        cookTempCelsius: input.cookTempCelsius,
         photoUrl: input.photoUrl,
         notes: input.notes,
         updatedAt: new Date().toISOString(),

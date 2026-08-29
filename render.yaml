@@ -24,7 +24,7 @@ services:
         sync: false # https://cookgrim-api.onrender.com une fois déployé
       - key: WEB_ORIGIN
         sync: false # https://cookgrim-web.onrender.com une fois déployé
-      - key: ANTHROPIC_API_KEY
+      - key: GEMINI_API_KEY
         sync: false
 
   - type: web

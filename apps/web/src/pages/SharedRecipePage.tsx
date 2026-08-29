@@ -18,6 +18,7 @@ export function SharedRecipePage() {
       servings: recipe.servings,
       prepTimeMinutes: recipe.prepTimeMinutes,
       cookTimeMinutes: recipe.cookTimeMinutes,
+      cookTempCelsius: recipe.cookTempCelsius,
       photoUrl: recipe.photoUrl,
       notes: null,
       ingredients: recipe.ingredients.map(({ name, quantity, unit }) => ({
@@ -64,6 +65,7 @@ export function SharedRecipePage() {
                 recipe.servings ? `${recipe.servings} portions` : null,
                 recipe.prepTimeMinutes ? `${recipe.prepTimeMinutes} min de préparation` : null,
                 recipe.cookTimeMinutes ? `${recipe.cookTimeMinutes} min de cuisson` : null,
+                recipe.cookTempCelsius ? `${recipe.cookTempCelsius} °C` : null,
               ]
                 .filter(Boolean)
                 .join(" · ")}
