@@ -18,7 +18,7 @@ code sur **GitHub**, base de données **Turso**.
 | Backend | Hono (serveur TypeScript), déployé comme Web Service Render |
 | Base de données | Turso (SQLite/libSQL) via `@libsql/client` |
 | ORM / migrations | Drizzle ORM + drizzle-kit |
-| Auth | Better Auth (email + mot de passe), adaptateur Drizzle/SQLite |
+| Auth | Better Auth (pseudo + code à 4 chiffres, email interne dérivé du pseudo), adaptateur Drizzle/SQLite |
 | Vision IA (prefill photo) | Claude (`@anthropic-ai/sdk`), appelé depuis une route serveur (`POST /api/recipes/extract`) |
 | État serveur / cache (front) | TanStack Query |
 | Formulaires | React Hook Form + Zod |

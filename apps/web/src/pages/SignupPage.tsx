@@ -1,23 +1,35 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { signUp } from "../lib/auth-client";
+import { PIN_LENGTH, PSEUDO_MAX_LENGTH, pseudoToEmail, sanitizePin, sanitizePseudo } from "../lib/pseudo";
 
 export function SignupPage() {
   const navigate = useNavigate();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [pseudo, setPseudo] = useState("");
+  const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (pin.length !== PIN_LENGTH) {
+      setError(`Le code doit contenir exactement ${PIN_LENGTH} chiffres.`);
+      return;
+    }
     setIsSubmitting(true);
-    const { error: signUpError } = await signUp.email({ name, email, password });
+    const { error: signUpError } = await signUp.email({
+      name: pseudo,
+      email: pseudoToEmail(pseudo),
+      password: pin,
+    });
     setIsSubmitting(false);
     if (signUpError) {
-      setError(signUpError.message ?? "Impossible de créer le compte.");
+      setError(
+        signUpError.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL"
+          ? "Ce pseudo est déjà pris."
+          : (signUpError.message ?? "Impossible de créer le compte."),
+      );
       return;
     }
     navigate("/", { replace: true });
@@ -34,37 +46,34 @@ export function SignupPage() {
         <h1 className="font-display text-xl font-semibold text-(--color-text)">Créer un compte</h1>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-(--color-text)">Nom</span>
+          <span className="text-sm font-medium text-(--color-text)">Pseudo</span>
           <input
             required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            maxLength={PSEUDO_MAX_LENGTH}
+            value={pseudo}
+            onChange={(e) => setPseudo(sanitizePseudo(e.target.value))}
             className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
           />
+          <span className="text-xs text-(--color-text-muted)">
+            {PSEUDO_MAX_LENGTH} caractères maximum (lettres, chiffres, "-", "_").
+          </span>
         </label>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-(--color-text)">Email</span>
+          <span className="text-sm font-medium text-(--color-text)">Code</span>
           <input
-            type="email"
             required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
-          />
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-(--color-text)">Mot de passe</span>
-          <input
             type="password"
-            required
-            minLength={8}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            inputMode="numeric"
+            autoComplete="off"
+            pattern="\d*"
+            minLength={PIN_LENGTH}
+            maxLength={PIN_LENGTH}
+            value={pin}
+            onChange={(e) => setPin(sanitizePin(e.target.value))}
             className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
           />
-          <span className="text-xs text-(--color-text-muted)">8 caractères minimum.</span>
+          <span className="text-xs text-(--color-text-muted)">{PIN_LENGTH} chiffres.</span>
         </label>
 
         {error && <p className="text-sm text-red-600">{error}</p>}

@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { signIn } from "../lib/auth-client";
+import { PIN_LENGTH, PSEUDO_MAX_LENGTH, pseudoToEmail, sanitizePin, sanitizePseudo } from "../lib/pseudo";
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [pseudo, setPseudo] = useState("");
+  const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -13,10 +14,13 @@ export function LoginPage() {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
-    const { error: signInError } = await signIn.email({ email, password });
+    const { error: signInError } = await signIn.email({
+      email: pseudoToEmail(pseudo),
+      password: pin,
+    });
     setIsSubmitting(false);
     if (signInError) {
-      setError(signInError.message ?? "Identifiants incorrects.");
+      setError("Pseudo ou code incorrect.");
       return;
     }
     navigate("/", { replace: true });
@@ -33,23 +37,28 @@ export function LoginPage() {
         <h1 className="font-display text-xl font-semibold text-(--color-text)">Connexion</h1>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-(--color-text)">Email</span>
+          <span className="text-sm font-medium text-(--color-text)">Pseudo</span>
           <input
-            type="email"
             required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            maxLength={PSEUDO_MAX_LENGTH}
+            value={pseudo}
+            onChange={(e) => setPseudo(sanitizePseudo(e.target.value))}
             className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
           />
         </label>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-(--color-text)">Mot de passe</span>
+          <span className="text-sm font-medium text-(--color-text)">Code</span>
           <input
-            type="password"
             required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            pattern="\d*"
+            minLength={PIN_LENGTH}
+            maxLength={PIN_LENGTH}
+            value={pin}
+            onChange={(e) => setPin(sanitizePin(e.target.value))}
             className="rounded-lg border border-(--color-surface-line) bg-(--color-surface) px-3 py-2 text-(--color-text)"
           />
         </label>
