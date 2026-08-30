@@ -1,9 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { ApiError } from "../lib/api";
+import { RECIPE_SYNCED_EVENT, type RecipeSyncedDetail } from "../lib/offline-sync";
 import {
+  useConsumeRecipe,
   useDeleteRecipe,
   useRecipe,
   useShareRecipe,
+  useShareRecipeWithUser,
   useUnshareRecipe,
 } from "../lib/queries/recipes";
 
@@ -31,14 +35,42 @@ export function RecipeDetailPage() {
   const { data: recipe, isLoading, isError } = useRecipe(id);
   const shareRecipe = useShareRecipe(id ?? "");
   const unshareRecipe = useUnshareRecipe(id ?? "");
+  const shareRecipeWithUser = useShareRecipeWithUser(id ?? "");
+  const consumeRecipe = useConsumeRecipe(id ?? "");
   const deleteRecipe = useDeleteRecipe();
   const [copied, setCopied] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [showConsume, setShowConsume] = useState(false);
+  const [consumeMultiplier, setConsumeMultiplier] = useState(1);
+  const [consumeSummary, setConsumeSummary] = useState<string | null>(null);
+  const [showShareWithUser, setShowShareWithUser] = useState(false);
+  const [sharePseudo, setSharePseudo] = useState("");
+  const [shareWithUserMessage, setShareWithUserMessage] = useState<string | null>(null);
   const ingredientChecklist = useChecklist();
   const stepChecklist = useChecklist();
 
+  // Recette créée hors-ligne (voir queries/recipes.ts, createRecipeOffline) :
+  // dès que la file la synchronise pour de bon (offline-sync.ts), on quitte
+  // l'URL provisoire pour la vraie, sans quoi les actions ci-dessous
+  // (partager, décompter…) continueraient de viser un id que le serveur ne
+  // connaît pas.
+  useEffect(() => {
+    function onSynced(e: Event) {
+      const { tempId, recipe } = (e as CustomEvent<RecipeSyncedDetail>).detail;
+      if (tempId === id) navigate(`/recettes/${recipe.id}`, { replace: true });
+    }
+    window.addEventListener(RECIPE_SYNCED_EVENT, onSynced);
+    return () => window.removeEventListener(RECIPE_SYNCED_EVENT, onSynced);
+  }, [id, navigate]);
+
   if (isLoading) return <p className="text-(--color-text-muted)">Chargement…</p>;
   if (isError || !recipe) return <p className="text-sm text-red-600">Recette introuvable.</p>;
+
+  // Pas encore (ou jamais) parvenue au serveur : les actions ci-dessous
+  // (modifier, partager, décompter le stock…) ont toutes besoin d'un id que
+  // l'API reconnaît — seuls l'export PDF (purement client) et la suppression
+  // (gérée spécifiquement, voir useDeleteRecipe) restent disponibles.
+  const isUnsynced = Boolean(recipe.syncStatus);
 
   const shareUrl = recipe.shareToken
     ? `${window.location.origin}/r/${recipe.shareToken}`
@@ -78,6 +110,30 @@ export function RecipeDetailPage() {
     navigate("/");
   };
 
+  const onConsume = async () => {
+    const result = await consumeRecipe.mutateAsync(consumeMultiplier);
+    const decrementedCount = result.summary.filter((s) => s.decremented).length;
+    const skippedCount = result.summary.length - decrementedCount;
+    setConsumeSummary(
+      skippedCount > 0
+        ? `${decrementedCount} ingrédient${decrementedCount > 1 ? "s" : ""} décompté${decrementedCount > 1 ? "s" : ""} du stock, ${skippedCount} ignoré${skippedCount > 1 ? "s" : ""} (absent du stock ou quantité non suivie).`
+        : `${decrementedCount} ingrédient${decrementedCount > 1 ? "s" : ""} décompté${decrementedCount > 1 ? "s" : ""} du stock.`,
+    );
+    setShowConsume(false);
+  };
+
+  const onShareWithUser = async () => {
+    try {
+      const result = await shareRecipeWithUser.mutateAsync(sharePseudo);
+      setShareWithUserMessage(`Copie envoyée à @${result.pseudo}.`);
+      setSharePseudo("");
+    } catch (err) {
+      setShareWithUserMessage(
+        err instanceof ApiError ? err.message : "Impossible d'envoyer la copie, réessayez.",
+      );
+    }
+  };
+
   return (
     <div key={recipe.id} className="flex flex-col gap-8">
       <div>
@@ -90,16 +146,44 @@ export function RecipeDetailPage() {
               {recipe.title}
             </h1>
             {meta && <p className="text-sm text-(--color-text-muted)">{meta}</p>}
+            {recipe.sharedFromPseudo && (
+              <p className="text-sm text-(--color-text-muted)">
+                Reçue de @{recipe.sharedFromPseudo}
+              </p>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={onDelete}
-            className="shrink-0 text-sm text-(--color-text-muted) hover:text-red-600"
-          >
-            Supprimer
-          </button>
+          <div className="flex shrink-0 items-center gap-3">
+            {!isUnsynced && (
+              <Link
+                to={`/recettes/${recipe.id}/modifier`}
+                className="text-sm text-(--color-plum) underline underline-offset-4"
+              >
+                Modifier
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={onDelete}
+              className="text-sm text-(--color-text-muted) hover:text-red-600"
+            >
+              Supprimer
+            </button>
+          </div>
         </div>
       </div>
+
+      {recipe.syncStatus === "pending" && (
+        <p className="rounded-xl bg-(--color-saffron)/15 px-4 py-3 text-sm text-(--color-text)">
+          Créée hors-ligne — en attente de synchronisation. Les actions ci-dessous seront
+          disponibles une fois la connexion revenue.
+        </p>
+      )}
+      {recipe.syncStatus === "failed" && (
+        <p className="rounded-xl bg-red-600/10 px-4 py-3 text-sm text-red-600">
+          Échec de synchronisation : cette recette n'a pas pu être enregistrée côté serveur.
+          Notez son contenu puis supprimez-la et recréez-la une fois en ligne.
+        </p>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <button
@@ -111,7 +195,7 @@ export function RecipeDetailPage() {
           {isExporting ? "Génération…" : "Télécharger en PDF"}
         </button>
 
-        {!shareUrl && (
+        {!isUnsynced && !shareUrl && (
           <button
             type="button"
             onClick={() => shareRecipe.mutate()}
@@ -121,7 +205,97 @@ export function RecipeDetailPage() {
             Partager
           </button>
         )}
+
+        {!isUnsynced && !showConsume && (
+          <button
+            type="button"
+            onClick={() => {
+              setConsumeSummary(null);
+              setShowConsume(true);
+            }}
+            className="rounded-full border border-(--color-surface-line) px-4 py-2 text-sm font-medium text-(--color-text) hover:border-(--color-plum)"
+          >
+            J'ai cuisiné cette recette
+          </button>
+        )}
+
+        {!isUnsynced && !showShareWithUser && (
+          <button
+            type="button"
+            onClick={() => {
+              setShareWithUserMessage(null);
+              setShowShareWithUser(true);
+            }}
+            className="rounded-full border border-(--color-surface-line) px-4 py-2 text-sm font-medium text-(--color-text) hover:border-(--color-plum)"
+          >
+            Copier à un pseudo
+          </button>
+        )}
       </div>
+
+      {showShareWithUser && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-(--color-surface-line) bg-(--color-surface) px-4 py-3">
+          <input
+            type="text"
+            value={sharePseudo}
+            onChange={(e) => setSharePseudo(e.target.value)}
+            placeholder="Pseudo du destinataire"
+            className="min-w-0 flex-1 rounded-lg border border-(--color-surface-line) bg-(--color-bg) px-3 py-1.5 text-sm text-(--color-text)"
+          />
+          <button
+            type="button"
+            onClick={onShareWithUser}
+            disabled={shareRecipeWithUser.isPending || sharePseudo.trim().length === 0}
+            className="rounded-full bg-(--color-plum) px-4 py-1.5 text-sm font-medium text-(--color-tile-fg) disabled:opacity-60"
+          >
+            {shareRecipeWithUser.isPending ? "Envoi…" : "Envoyer une copie"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowShareWithUser(false)}
+            className="text-sm text-(--color-text-muted) hover:text-red-600"
+          >
+            Annuler
+          </button>
+        </div>
+      )}
+
+      {shareWithUserMessage && (
+        <p className="text-sm text-(--color-text-muted)">{shareWithUserMessage}</p>
+      )}
+
+      {showConsume && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-(--color-surface-line) bg-(--color-surface) px-4 py-3">
+          <label className="flex items-center gap-1.5 text-sm text-(--color-text-muted)">
+            Portions réalisées ×
+            <input
+              type="number"
+              min={0.5}
+              step={0.5}
+              value={consumeMultiplier}
+              onChange={(e) => setConsumeMultiplier(Number(e.target.value))}
+              className="w-16 rounded-lg border border-(--color-surface-line) bg-(--color-bg) px-2 py-1 text-(--color-text)"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={onConsume}
+            disabled={consumeRecipe.isPending}
+            className="rounded-full bg-(--color-plum) px-4 py-1.5 text-sm font-medium text-(--color-tile-fg) disabled:opacity-60"
+          >
+            {consumeRecipe.isPending ? "Décompte…" : "Décompter du stock"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowConsume(false)}
+            className="text-sm text-(--color-text-muted) hover:text-red-600"
+          >
+            Annuler
+          </button>
+        </div>
+      )}
+
+      {consumeSummary && <p className="text-sm text-(--color-text-muted)">{consumeSummary}</p>}
 
       {shareUrl && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-(--color-surface-line) bg-(--color-surface) px-4 py-3">

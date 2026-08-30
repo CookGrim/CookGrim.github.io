@@ -20,6 +20,11 @@ export const recipes = sqliteTable("recipes", {
   photoUrl: text("photo_url"),
   notes: text("notes"), // zone libre, privée par défaut au partage
   shareToken: text("share_token").unique(), // non-null = lien public actif
+  // Pseudo de l'expéditeur si cette recette est une copie reçue via
+  // POST /api/recipes/:id/shares (voir routes/recipes.ts) — simple mention
+  // d'origine, pas une référence vivante : l'expéditeur peut être renommé ou
+  // supprimé ensuite sans que ça n'affecte cette copie.
+  sharedFromPseudo: text("shared_from_pseudo"),
   createdAt: text("created_at")
     .notNull()
     .default(sql`(current_timestamp)`),
@@ -50,6 +55,20 @@ export const steps = sqliteTable("steps", {
     .references(() => recipes.id, { onDelete: "cascade" }),
   position: integer("position").notNull().default(0),
   text: text("text").notNull(),
+});
+
+// Verrouillage de compte après trop d'échecs de connexion (voir auth.ts,
+// hooks before/after sur /sign-in/email) — une ligne par utilisateur, créée
+// au premier échec, effacée dès une connexion réussie (compteur "réinitialisé").
+export const loginLockouts = sqliteTable("login_lockouts", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  failedCount: integer("failed_count").notNull().default(0),
+  // ISO ; null = pas verrouillé. Ne se remet PAS à zéro tout seul à
+  // l'expiration : si l'échec reprend après coup, le compte reverrouille
+  // immédiatement plutôt que d'accorder 10 nouveaux essais.
+  lockedUntil: text("locked_until"),
 });
 
 export const pantryItems = sqliteTable("pantry_items", {

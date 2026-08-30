@@ -11,6 +11,7 @@
     "icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
+    "@cookgrim/shared": "*",
     "@hookform/resolvers": "^5.9.1",
     "@react-pdf/renderer": "^4.6.1",
     "@tailwindcss/vite": "^4.3.3",

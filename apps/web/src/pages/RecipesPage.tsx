@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { RecipeIllustration } from "../components/RecipeIllustration";
 import { normalizeText } from "../lib/normalize-text";
 import { useCreateShoppingList } from "../lib/queries/shopping-lists";
 import { useDeleteRecipe, useMissingCounts, useRecipes } from "../lib/queries/recipes";
@@ -114,30 +115,94 @@ export function RecipesPage() {
       )}
 
       {visibleRecipes.length > 0 && (
-        <ul className="flex flex-col gap-3">
+        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {visibleRecipes.map((recipe) => {
             const isSelected = recipe.id in multipliers;
             const missing = missingByRecipe.get(recipe.id);
+            const totalMinutes = (recipe.prepTimeMinutes ?? 0) + (recipe.cookTimeMinutes ?? 0);
+            const servingsLabel = recipe.servings
+              ? `${recipe.servings} portion${recipe.servings > 1 ? "s" : ""}`
+              : "Portions non précisées";
+            const metaLabel = totalMinutes > 0 ? `${totalMinutes} min · ${servingsLabel}` : servingsLabel;
             return (
               <li
                 key={recipe.id}
-                className="flex items-center gap-4 rounded-xl border border-(--color-surface-line) bg-(--color-surface) px-4 py-3"
+                className={`flex min-w-0 flex-col overflow-hidden rounded-2xl border bg-(--color-surface) transition-colors ${
+                  isSelected
+                    ? "border-(--color-plum) ring-2 ring-(--color-plum)/25"
+                    : "border-(--color-surface-line)"
+                }`}
               >
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => toggleSelected(recipe.id)}
-                  className="size-5 accent-(--color-plum)"
-                  aria-label={`Sélectionner ${recipe.title} pour la liste de courses`}
-                />
-                <Link to={`/recettes/${recipe.id}`} className="flex-1">
-                  <p className="font-medium text-(--color-text) hover:text-(--color-plum)">
+                <div className="relative h-40 shrink-0">
+                  <RecipeIllustration
+                    recipeId={recipe.id}
+                    title={recipe.title}
+                    photoUrl={recipe.photoUrl}
+                    className="h-40 w-full"
+                  />
+                  {!recipe.syncStatus && (
+                    <button
+                      type="button"
+                      onClick={() => toggleSelected(recipe.id)}
+                      aria-pressed={isSelected}
+                      aria-label={`Sélectionner ${recipe.title} pour la liste de courses`}
+                      className={`absolute left-2 top-2 flex size-7 items-center justify-center rounded-full border backdrop-blur-sm transition-colors ${
+                        isSelected
+                          ? "border-(--color-plum) bg-(--color-plum) text-(--color-tile-fg)"
+                          : "border-(--color-plum)/30 bg-(--color-surface)/85 text-transparent"
+                      }`}
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={3}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="size-4"
+                      >
+                        <path d="M4 12l5 5L20 6" />
+                      </svg>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => deleteRecipe.mutate(recipe.id)}
+                    aria-label={`Supprimer ${recipe.title}`}
+                    className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full bg-(--color-surface)/85 text-(--color-text-muted) backdrop-blur-sm hover:text-red-600"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="size-3.5"
+                    >
+                      <path d="M5 7h14" />
+                      <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                      <path d="M7 7l1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13" />
+                    </svg>
+                  </button>
+                </div>
+
+                <Link to={`/recettes/${recipe.id}`} className="flex flex-1 flex-col gap-1 px-4 py-3">
+                  <p className="line-clamp-2 font-display font-semibold text-(--color-text) hover:text-(--color-plum)">
                     {recipe.title}
                   </p>
-                  <p className="text-sm text-(--color-text-muted)">
-                    {recipe.servings ? `${recipe.servings} portions` : "Portions non précisées"}
-                  </p>
-                  {missing && (
+                  <p className="text-sm text-(--color-text-muted)">{metaLabel}</p>
+                  {recipe.syncStatus === "pending" && (
+                    <p className="text-sm text-(--color-saffron)">
+                      Créée hors-ligne — en attente de synchronisation
+                    </p>
+                  )}
+                  {recipe.syncStatus === "failed" && (
+                    <p className="text-sm text-red-600">
+                      Échec de synchronisation — à recréer une fois en ligne
+                    </p>
+                  )}
+                  {!recipe.syncStatus && missing && (
                     <p
                       className={`text-sm ${
                         missing.missingCount === 0
@@ -151,26 +216,33 @@ export function RecipesPage() {
                     </p>
                   )}
                 </Link>
+
                 {isSelected && (
-                  <label className="flex items-center gap-1.5 text-sm text-(--color-text-muted)">
-                    ×
-                    <input
-                      type="number"
-                      min={0.5}
-                      step={0.5}
-                      value={multipliers[recipe.id]}
-                      onChange={(e) => setMultiplier(recipe.id, Number(e.target.value))}
-                      className="w-16 rounded-lg border border-(--color-surface-line) bg-(--color-bg) px-2 py-1 text-(--color-text)"
-                    />
-                  </label>
+                  <div className="flex items-center justify-between border-t border-dashed border-(--color-surface-line) px-4 py-2.5">
+                    <span className="text-xs text-(--color-text-muted)">Quantité</span>
+                    <div className="flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setMultiplier(recipe.id, Math.max(0.5, multipliers[recipe.id] - 0.5))}
+                        aria-label="Diminuer la quantité"
+                        className="flex size-7 items-center justify-center rounded-full border border-(--color-surface-line) text-(--color-text) hover:border-(--color-plum)"
+                      >
+                        −
+                      </button>
+                      <span className="min-w-8 text-center text-sm font-medium text-(--color-text)">
+                        × {multipliers[recipe.id]}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setMultiplier(recipe.id, multipliers[recipe.id] + 0.5)}
+                        aria-label="Augmenter la quantité"
+                        className="flex size-7 items-center justify-center rounded-full border border-(--color-surface-line) text-(--color-text) hover:border-(--color-plum)"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
                 )}
-                <button
-                  type="button"
-                  onClick={() => deleteRecipe.mutate(recipe.id)}
-                  className="text-sm text-(--color-text-muted) hover:text-red-600"
-                >
-                  Supprimer
-                </button>
               </li>
             );
           })}

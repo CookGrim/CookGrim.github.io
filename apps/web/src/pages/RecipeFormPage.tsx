@@ -1,32 +1,27 @@
+import { ingredientInputSchema, recipeInputSchema } from "@cookgrim/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Controller, useFieldArray, useForm } from "react-hook-form";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
 import { ApiError } from "../lib/api";
 import { compressImage } from "../lib/compress-image";
-import { useCreateRecipe, useExtractRecipe } from "../lib/queries/recipes";
+import { useCreateRecipe, useExtractRecipe, useRecipe, useUpdateRecipe } from "../lib/queries/recipes";
 import { UNITS } from "../lib/units";
 
-const recipeSchema = z.object({
-  title: z.string().min(1, "Le titre est obligatoire."),
+// Étend le schéma partagé avec l'API (packages/shared/src/recipe.ts) : les
+// <input> HTML ne produisent que des chaînes, d'où le `coerce` sur les
+// champs numériques. `photoUrl` n'est pas un champ du formulaire (photo
+// gérée séparément, voir onPhotoSelected/onSubmit) — on l'exclut plutôt que
+// de le rendre optionnel, pour ne pas laisser croire qu'il est éditable ici.
+const recipeSchema = recipeInputSchema.omit({ photoUrl: true }).extend({
   servings: z.coerce.number().int().positive().nullable(),
   prepTimeMinutes: z.coerce.number().int().nonnegative().nullable(),
   cookTimeMinutes: z.coerce.number().int().nonnegative().nullable(),
   cookTempCelsius: z.coerce.number().int().nonnegative().nullable(),
-  notes: z.string().nullable(),
   ingredients: z
-    .array(
-      z.object({
-        name: z.string().min(1, "Nom manquant."),
-        quantity: z.coerce.number().nullable(),
-        unit: z.string().nullable(),
-      }),
-    )
+    .array(ingredientInputSchema.extend({ quantity: z.coerce.number().nullable() }))
     .min(1, "Ajoutez au moins un ingrédient."),
-  steps: z
-    .array(z.object({ text: z.string().min(1, "Étape vide.") }))
-    .min(1, "Ajoutez au moins une étape."),
 });
 
 type RecipeFormInput = z.input<typeof recipeSchema>;
@@ -45,7 +40,14 @@ const defaultValues: RecipeFormInput = {
 
 export function RecipeFormPage() {
   const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
+  const isEditing = Boolean(id);
+  // En édition, on charge la recette existante pour préremplir le
+  // formulaire (voir l'effet ci-dessous) ; en création, cette query reste
+  // simplement désactivée (id undefined, voir useRecipe).
+  const { data: existingRecipe, isLoading: isLoadingRecipe } = useRecipe(id);
   const createRecipe = useCreateRecipe();
+  const updateRecipe = useUpdateRecipe(id ?? "");
   const extractRecipe = useExtractRecipe();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [extractError, setExtractError] = useState<string | null>(null);
@@ -64,10 +66,39 @@ export function RecipeFormPage() {
   const ingredients = useFieldArray({ control, name: "ingredients" });
   const steps = useFieldArray({ control, name: "steps" });
 
+  // Préremplissage depuis la recette existante, une fois chargée. Ne dépend
+  // que de son id : un changement de titre/ingrédients pendant l'édition ne
+  // doit pas écraser ce que l'utilisateur est en train de taper.
+  useEffect(() => {
+    if (!existingRecipe) return;
+    reset({
+      title: existingRecipe.title,
+      servings: existingRecipe.servings,
+      prepTimeMinutes: existingRecipe.prepTimeMinutes,
+      cookTimeMinutes: existingRecipe.cookTimeMinutes,
+      cookTempCelsius: existingRecipe.cookTempCelsius,
+      notes: existingRecipe.notes,
+      ingredients: existingRecipe.ingredients.map((ing) => ({
+        name: ing.name,
+        quantity: ing.quantity,
+        unit: ing.unit,
+      })),
+      steps: existingRecipe.steps.map((step) => ({ text: step.text })),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingRecipe?.id]);
+
   const onSubmit = handleSubmit(async (values: RecipeFormOutput) => {
     try {
-      await createRecipe.mutateAsync({ ...values, photoUrl: null });
-      navigate("/");
+      if (isEditing) {
+        // La photo n'est pas éditable depuis ce formulaire (import v2) : on
+        // conserve celle déjà associée à la recette plutôt que de l'effacer.
+        await updateRecipe.mutateAsync({ ...values, photoUrl: existingRecipe?.photoUrl ?? null });
+        navigate(`/recettes/${id}`);
+      } else {
+        await createRecipe.mutateAsync({ ...values, photoUrl: null });
+        navigate("/");
+      }
     } catch (err) {
       setError("root", {
         message:
@@ -111,11 +142,15 @@ export function RecipeFormPage() {
     }
   };
 
+  if (isEditing && isLoadingRecipe) {
+    return <p className="text-(--color-text-muted)">Chargement…</p>;
+  }
+
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-8">
       <div className="flex items-center justify-between gap-4">
         <h1 className="font-display text-2xl font-semibold text-(--color-text)">
-          Nouvelle recette
+          {isEditing ? "Modifier la recette" : "Nouvelle recette"}
         </h1>
         <div className="flex flex-col items-end gap-1">
           <button
@@ -296,7 +331,7 @@ export function RecipeFormPage() {
         disabled={isSubmitting}
         className="self-start rounded-full bg-(--color-plum) px-6 py-2.5 font-semibold text-(--color-tile-fg) transition-opacity hover:opacity-90 disabled:opacity-60"
       >
-        Enregistrer la recette
+        {isEditing ? "Enregistrer les modifications" : "Enregistrer la recette"}
       </button>
     </form>
   );

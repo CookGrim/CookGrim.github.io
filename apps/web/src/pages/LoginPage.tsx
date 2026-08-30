@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { pseudoToEmail } from "@cookgrim/shared";
 import { signIn } from "../lib/auth-client";
-import { PIN_LENGTH, PSEUDO_MAX_LENGTH, pseudoToEmail, sanitizePin, sanitizePseudo } from "../lib/pseudo";
+import { PIN_LENGTH, PSEUDO_MAX_LENGTH, sanitizePin, sanitizePseudo } from "../lib/pseudo";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -20,7 +21,15 @@ export function LoginPage() {
     });
     setIsSubmitting(false);
     if (signInError) {
-      setError("Pseudo ou code incorrect.");
+      // "Invalid email or password" reste générique à dessein (ne pas
+      // confirmer si le pseudo existe) — tout le reste (ex. compte
+      // verrouillé après trop d'échecs, voir apps/api/src/auth.ts) est un
+      // message serveur explicite à afficher tel quel.
+      setError(
+        signInError.code === "INVALID_EMAIL_OR_PASSWORD"
+          ? "Pseudo ou code incorrect."
+          : (signInError.message ?? "Pseudo ou code incorrect."),
+      );
       return;
     }
     navigate("/", { replace: true });

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { pseudoToEmail } from "@cookgrim/shared";
 import { signUp } from "../lib/auth-client";
-import { PIN_LENGTH, PSEUDO_MAX_LENGTH, pseudoToEmail, sanitizePin, sanitizePseudo } from "../lib/pseudo";
+import { PIN_LENGTH, PSEUDO_MAX_LENGTH, sanitizePin, sanitizePseudo } from "../lib/pseudo";
 
 export function SignupPage() {
   const navigate = useNavigate();

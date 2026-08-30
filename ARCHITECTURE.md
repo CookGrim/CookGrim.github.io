@@ -35,11 +35,6 @@ service tout-en-un, l'auth, l'API et le contrôle d'accès sont du code
 applicatif à part entière — chaque requête doit explicitement filtrer par
 `user_id`, il n'y a pas de filet de sécurité au niveau base de données.
 
-**Photos de recette** : différées en v2. La photo ne sert qu'à l'extraction
-IA (envoyée à Claude, jamais stockée) — pas de stockage objet à mettre en
-place tout de suite. Quand ce sera nécessaire, Cloudflare R2 (compatible
-S3) est le candidat naturel : Render n'a pas d'équivalent natif.
-
 ---
 
 ## 2. Lancer en local
@@ -89,6 +84,8 @@ npm run icons
 ## 3. Arborescence
 
 ```
+packages/shared/      types + schémas Zod partagés (recette, pseudo→email),
+                       construit en JS avant apps/api et apps/web (npm run build)
 apps/web/            PWA (React/Vite)
   src/pages/          RecipesPage, RecipeFormPage, ShoppingListPage
   src/lib/api.ts       client REST vers apps/api
@@ -98,9 +95,25 @@ apps/api/             API (Hono)
   src/db/auth-schema.ts tables Better Auth (générées)
   src/routes/           recipes.ts, shopping-lists.ts, extract.ts
   src/lib/aggregate-ingredients.ts   agrégation liste de courses (fonction pure)
+  src/lib/*.test.ts     tests unitaires (Vitest) des fonctions pures ci-dessus
   src/middleware/require-auth.ts
+.github/workflows/ci.yml   type-check + lint + tests, à chaque push/PR
 render.yaml           blueprint de déploiement (2 services)
 ```
+
+### Tests
+
+```bash
+cd apps/api
+npm test          # une fois (CI)
+npm run test:watch
+```
+
+Seules les fonctions pures de `src/lib/` (`aggregate-ingredients.ts`,
+`pantry-match.ts`) sont couvertes pour l'instant — pas de DB à mocker, ce
+sont les points les plus critiques (agrégation liste de courses, conversions
+d'unités, décompte de stock) et les plus faciles à casser silencieusement en
+les modifiant. Les routes elles-mêmes n'ont pas de tests d'intégration.
 
 ---
 
@@ -152,7 +165,10 @@ redéploie les deux services.
    (`better-auth/react`, cookie de session), `RecipesPage`/`RecipeFormPage`
    branchés sur l'API réelle (TanStack Query), sélection de recettes +
    multiplicateur → génération de liste de courses, écran de liste avec
-   cases à cocher. Testé de bout en bout (sign-up, création de recette,
+   cases à cocher. `RecipeFormPage` sert aussi à l'édition
+   (`/recettes/:id/modifier`, préremplie via `useRecipe` + `useUpdateRecipe`,
+   `PUT /api/recipes/:id`) — la photo n'y est pas éditable (import v2),
+   sa valeur existante est conservée telle quelle. Testé de bout en bout (sign-up, création de recette,
    génération de liste, coche d'article).
    - Cookie de session cross-site (web/api sur deux domaines Render
      différents) : `advanced.defaultCookieAttributes` force
@@ -175,10 +191,34 @@ redéploie les deux services.
    (4xx — vraie erreur de validation/droits). Testé en réel : API coupée →
    coche conservée à l'écran et mise en file → API relancée → rejouée et
    persistée côté serveur.
-   - **Scope actuel** : seule la coche d'article est mise en file. Créer/
-     supprimer une recette, générer une liste, partager restent des actions
-     qui nécessitent d'être en ligne (pas de gestion d'ID temporaires /
-     réconciliation pour ces cas plus complexes).
+   - **Création de recette hors-ligne** ✅ — `useCreateRecipe`
+     (`src/lib/queries/recipes.ts`) pose un id local `temp-…`
+     (`offline-queue.ts`, `createTempId`/`isTempId`), affiche tout de suite
+     une recette optimiste marquée `syncStatus: "pending"` (liste + détail),
+     et met la vraie création en file. À la reconnexion,
+     `drainOfflineQueue` (`offline-sync.ts`) remplace le brouillon par la
+     recette réelle (id serveur) dans le cache, et prévient
+     `RecipeDetailPage` via l'évènement `cookgrim:recipe-synced` s'il est
+     resté ouvert sur l'URL provisoire, pour rediriger vers la vraie. Tant
+     qu'une recette n'est pas synchronisée : sélection pour une liste de
+     courses, partage, "copier à un pseudo", "j'ai cuisiné" et modification
+     sont masqués (id que le serveur ne connaît pas encore) — seuls export
+     PDF et suppression restent disponibles. Si la création échoue pour de
+     bon une fois en ligne (ex. session expirée entre-temps — vraie erreur
+     4xx, pas un souci réseau), la recette reste affichée marquée
+     `syncStatus: "failed"` plutôt que d'être perdue en silence, à charge
+     pour l'utilisateur de la recréer.
+     - **Limite connue** : ce brouillon optimiste ne vit qu'en mémoire
+       (cache TanStack Query). Recharger la page pendant qu'on est encore
+       hors-ligne le fait disparaître de l'écran — la requête, elle, reste
+       intacte dans la file IndexedDB et se rejoue normalement à la
+       reconnexion suivante ; aucune donnée n'est perdue, seul l'affichage
+       est temporairement à jour du serveur plutôt que du brouillon. Même
+       limite déjà présente pour la coche d'article optimiste ci-dessus.
+   - **Scope restant** : éditer/supprimer une recette existante, générer une
+     liste, partager restent des actions qui nécessitent d'être en ligne —
+     pas besoin de réconciliation d'id là où l'id est déjà réel (édition/
+     suppression), mais pas encore fait faute de besoin confirmé.
 5. **Partage & export** ✅ — `RecipeDetailPage` (générer/révoquer un lien
    public, bouton PDF), `SharedRecipePage` publique (`/r/:token`, sans
    notes) avec import dans ses propres recettes si connecté. Export PDF
@@ -194,14 +234,12 @@ redéploie les deux services.
    profonde (ex. `/recettes/xyz`) hors-ligne serve l'app shell au lieu
    d'une erreur navigateur. Vérifié : manifeste valide et servi
    correctement, `sw.js` généré avec la bonne liste de précache
-   (`node --check` + inspection du bundle). **Non vérifié dans cet
-   environnement** : l'enregistrement réel du service worker a échoué
-   dans le navigateur sandboxé de l'outil (erreur générique de
-   fetch du script alors que `curl` le sert très bien) — probablement une
-   limite de l'outil plutôt qu'un bug, mais à confirmer avec un vrai
-   Lighthouse (Chrome DevTools → Application/Lighthouse) sur l'URL Render
-   déployée. Recherche/tags par ingrédient restent hors scope (les
-   ingrédients ne sont pas chargés dans la liste).
+   (`node --check` + inspection du bundle). **Vérifié sur l'URL Render
+   déployée** (Chrome DevTools → Application/Lighthouse) : l'enregistrement
+   du service worker fonctionne réellement en conditions de production —
+   l'échec observé plus tôt était bien une limite du navigateur sandboxé de
+   l'outil, pas un bug de l'app. Recherche/tags par ingrédient restent hors
+   scope (les ingrédients ne sont pas chargés dans la liste).
 
 ---
 
@@ -209,9 +247,29 @@ redéploie les deux services.
 
 - Toujours laisser l'utilisateur relire/corriger l'extraction IA avant
   sauvegarde (jamais d'auto-save direct depuis la photo).
+- **La photo envoyée pour extraction IA n'est jamais sauvegardée**, ni en
+  base ni sur disque côté serveur (`POST /api/recipes/extract`,
+  `apps/api/src/routes/extract.ts`) : elle ne sert que le temps de l'appel
+  Gemini, jamais écrite nulle part. Côté formulaire (`RecipeFormPage`), rien
+  ne permet d'associer cette photo à `photoUrl` — la création force
+  `photoUrl: null`, l'édition conserve la valeur déjà en base sans jamais la
+  faire pointer vers la photo importée. Stockage photo prévu en v2
+  (Cloudflare R2, voir §1) : à ce moment-là, bien garder ces deux flux
+  distincts (upload explicite d'une photo de recette ≠ photo fournie pour
+  extraction IA, qui doit rester jetable).
 - `GEMINI_API_KEY` est une variable serveur uniquement (Render), jamais
   `VITE_*` — elle finirait dans le bundle client.
 - Chaque nouvelle route doit filtrer explicitement par `user_id` : pas de
   RLS pour rattraper un oubli.
 - `share_token` doit rester imprévisible (UUID v4) et révocable — c'est déjà
   le cas (`POST/DELETE /api/recipes/:id/share`).
+- **Rate-limit en mémoire, mono-process.** `isRateLimited` (`src/lib/rate-limit.ts`,
+  utilisé pour `POST /:id/shares`) et le rate-limit natif de better-auth sur
+  `/sign-in/email` et `/sign-up/email` (`rateLimit.customRules` dans
+  `auth.ts`) stockent tous les deux leurs compteurs en mémoire du process —
+  scellé au seul Web Service Render actuel. Si l'app passe un jour à
+  plusieurs instances, ces compteurs ne seraient plus partagés (chaque
+  instance aurait sa propre limite effective, multipliée par le nombre
+  d'instances) : il faudrait alors un stockage partagé (`storage: "database"`
+  ou `"secondary-storage"` côté better-auth ; réécrire `isRateLimited` sur la
+  même base pour `/shares`).

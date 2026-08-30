@@ -3,12 +3,12 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "workspaces": ["apps/*"],
+  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "dev": "concurrently -n api,web -c blue,magenta \"npm run dev -w @cookgrim/api\" \"npm run dev -w @cookgrim/web\"",
+    "dev": "npm run build -w @cookgrim/shared && concurrently -n api,web -c blue,magenta \"npm run dev -w @cookgrim/api\" \"npm run dev -w @cookgrim/web\"",
     "dev:api": "npm run dev -w @cookgrim/api",
     "dev:web": "npm run dev -w @cookgrim/web",
-    "build": "npm run build -w @cookgrim/api && npm run build -w @cookgrim/web",
+    "build": "npm run build -w @cookgrim/shared && npm run build -w @cookgrim/api && npm run build -w @cookgrim/web",
     "icons": "npm run icons -w @cookgrim/web"
   },
   "devDependencies": {

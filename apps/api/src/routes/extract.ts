@@ -1,10 +1,25 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { requireAuth } from "../middleware/require-auth.js";
 import type { AppEnv } from "../types.js";
 
 export const extractRoute = new Hono<AppEnv>();
+
+// ~5 Mo de photo une fois décodée (le base64 gonfle la taille réelle d'environ
+// un tiers, d'où la marge) — la compression côté client (compress-image.ts)
+// vise bien en-deçà, cette limite sert à rejeter tôt, avant même de
+// bufferiser le corps en mémoire, un client modifié qui l'ignorerait. C'est
+// la route la plus coûteuse de l'appli (appel Gemini facturé) et la seule
+// sans limite de taille jusqu'ici.
+extractRoute.use(
+  "/",
+  bodyLimit({
+    maxSize: 7 * 1024 * 1024,
+    onError: (c) => c.json({ message: "Photo trop lourde (5 Mo maximum)." }, 413),
+  }),
+);
 
 const extractInput = z.object({
   imageBase64: z.string().min(1),
