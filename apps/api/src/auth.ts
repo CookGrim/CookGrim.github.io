@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import { user } from "./db/auth-schema.js";
 import { loginLockouts } from "./db/schema.js";
+import { getOrCreateGroupForUser } from "./lib/groups.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -51,6 +52,22 @@ export const auth = betterAuth({
     customRules: {
       "/sign-in/email": { window: 5 * 60, max: 20 },
       "/sign-up/email": { window: 60 * 60, max: 10 },
+    },
+  },
+  // Crée automatiquement le groupe personnel (foyer solo) de tout nouvel
+  // utilisateur — voir db/schema.ts (groups/groupMembers) et lib/groups.ts.
+  // `after` est mis en file après la transaction de création (voir
+  // node_modules/better-auth/dist/db/with-hooks.mjs, queueAfterTransactionHook) :
+  // ne bloque jamais la réponse d'inscription. `getOrCreateGroupForUser` sert
+  // aussi de filet de sécurité dans requireAuth si jamais ce hook n'avait
+  // pas encore couru au moment du premier appel API du nouvel utilisateur.
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (createdUser: { id: string; name: string }) => {
+          await getOrCreateGroupForUser(createdUser.id, createdUser.name);
+        },
+      },
     },
   },
   hooks: {

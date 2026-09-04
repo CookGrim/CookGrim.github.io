@@ -9,13 +9,13 @@ import type { AppEnv } from "../types.js";
 export const pantryRoute = new Hono<AppEnv>();
 pantryRoute.use("*", requireAuth);
 
-// GET /api/pantry — mon stock
+// GET /api/pantry — le stock du groupe
 pantryRoute.get("/", async (c) => {
-  const user = c.get("user");
+  const groupId = c.get("groupId");
   const rows = await db
     .select()
     .from(pantryItems)
-    .where(eq(pantryItems.userId, user.id))
+    .where(eq(pantryItems.groupId, groupId))
     .orderBy(pantryItems.name);
   return c.json(rows);
 });
@@ -26,16 +26,17 @@ const pantryItemInput = z.object({
   unit: z.string().nullable(),
 });
 
-// POST /api/pantry — ajoute un item au stock
+// POST /api/pantry — ajoute un item au stock du groupe
 pantryRoute.post("/", async (c) => {
   const user = c.get("user");
+  const groupId = c.get("groupId");
   const parsed = pantryItemInput.safeParse(await c.req.json());
   if (!parsed.success) {
     return c.json({ message: "Item invalide.", issues: parsed.error.issues }, 400);
   }
   const [item] = await db
     .insert(pantryItems)
-    .values({ userId: user.id, ...parsed.data })
+    .values({ userId: user.id, groupId, ...parsed.data })
     .returning();
   return c.json(item, 201);
 });
@@ -44,7 +45,7 @@ const pantryItemPatchInput = pantryItemInput.partial();
 
 // PATCH /api/pantry/:id — modifie un item (nom/quantité/unité)
 pantryRoute.patch("/:id", async (c) => {
-  const user = c.get("user");
+  const groupId = c.get("groupId");
   const id = c.req.param("id");
   const parsed = pantryItemPatchInput.safeParse(await c.req.json());
   if (!parsed.success) {
@@ -54,7 +55,7 @@ pantryRoute.patch("/:id", async (c) => {
   const [existing] = await db
     .select({ id: pantryItems.id })
     .from(pantryItems)
-    .where(and(eq(pantryItems.id, id), eq(pantryItems.userId, user.id)));
+    .where(and(eq(pantryItems.id, id), eq(pantryItems.groupId, groupId)));
   if (!existing) return c.json({ message: "Item introuvable." }, 404);
 
   const [updated] = await db
@@ -67,12 +68,12 @@ pantryRoute.patch("/:id", async (c) => {
 
 // DELETE /api/pantry/:id
 pantryRoute.delete("/:id", async (c) => {
-  const user = c.get("user");
+  const groupId = c.get("groupId");
   const id = c.req.param("id");
   const [existing] = await db
     .select({ id: pantryItems.id })
     .from(pantryItems)
-    .where(and(eq(pantryItems.id, id), eq(pantryItems.userId, user.id)));
+    .where(and(eq(pantryItems.id, id), eq(pantryItems.groupId, groupId)));
   if (!existing) return c.json({ message: "Item introuvable." }, 404);
 
   await db.delete(pantryItems).where(eq(pantryItems.id, id));

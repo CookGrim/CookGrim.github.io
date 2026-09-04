@@ -60,6 +60,20 @@ npx drizzle-kit migrate    # applique les migrations en attente
 npx drizzle-kit studio     # explorateur de données
 ```
 
+**`drizzle-kit migrate` plante sur Windows** (assertion libuv native,
+`src/win/async.c`, apparemment un mauvais interfaçage entre le spinner de la
+CLI et le client `@libsql/client` — reproduit à coup sûr sur cette machine).
+Si ça plante, utiliser `npx tsx scripts/run-migrate.ts` à la place : appelle
+directement l'API programmatique de `drizzle-orm` (celle que la CLI utilise
+en interne), sans son wrapper qui plante. Attention en revanche si votre base
+a été provisionnée à l'origine via `drizzle-kit push` plutôt que `migrate`
+(sa table `__drizzle_migrations` reste alors vide alors que les tables
+existent déjà) : `migrate()` essaierait de rejouer tout l'historique depuis
+la migration 0000 et échouerait sur "table already exists" — il faut d'abord
+baseliner les migrations déjà en place (insérer leur hash/date dans
+`__drizzle_migrations` sans rejouer leur SQL) avant de laisser passer les
+nouvelles.
+
 Le schéma applicatif vit dans `apps/api/src/db/schema.ts`. Les tables d'auth
 (`user`, `session`, `account`, `verification`) vivent dans
 `apps/api/src/db/auth-schema.ts`, générées par Better Auth
@@ -87,16 +101,20 @@ npm run icons
 packages/shared/      types + schémas Zod partagés (recette, pseudo→email),
                        construit en JS avant apps/api et apps/web (npm run build)
 apps/web/            PWA (React/Vite)
-  src/pages/          RecipesPage, RecipeFormPage, ShoppingListPage
+  src/pages/          RecipesPage, RecipeFormPage, ShoppingListPage, GroupPage
   src/lib/api.ts       client REST vers apps/api
+  src/components/SplashScreen.tsx   écran de chargement d'ouverture (logo qui bat)
   public/mark.svg      marque CookGrim, source des icônes
 apps/api/             API (Hono)
   src/db/schema.ts      tables applicatives (Drizzle)
   src/db/auth-schema.ts tables Better Auth (générées)
-  src/routes/           recipes.ts, shopping-lists.ts, extract.ts
+  src/routes/           recipes.ts, shopping-lists.ts, pantry.ts, groups.ts, extract.ts
   src/lib/aggregate-ingredients.ts   agrégation liste de courses (fonction pure)
+  src/lib/groups.ts     logique de groupe (fusion/départ/promotion de owner)
   src/lib/*.test.ts     tests unitaires (Vitest) des fonctions pures ci-dessus
-  src/middleware/require-auth.ts
+  src/middleware/require-auth.ts   résout aussi le groupId courant (voir §4)
+  scripts/run-migrate.ts       applique les migrations en attente (voir §2, note Windows)
+  scripts/backfill-groups.ts   one-off : groupe solo + group_id pour les comptes pré-groupes
 .github/workflows/ci.yml   type-check + lint + tests, à chaque push/PR
 render.yaml           blueprint de déploiement (2 services)
 ```
@@ -119,7 +137,7 @@ les modifiant. Les routes elles-mêmes n'ont pas de tests d'intégration.
 
 ## 4. Modèle de données
 
-Cinq tables applicatives (voir `apps/api/src/db/schema.ts`) :
+Tables applicatives (voir `apps/api/src/db/schema.ts`) :
 
 - **recipes** — titre, portions, temps, photo (v2), `notes` (zone libre
   privée), `shareToken` (non-null = lien public actif, régénérable pour
@@ -127,10 +145,47 @@ Cinq tables applicatives (voir `apps/api/src/db/schema.ts`) :
 - **ingredients** / **steps** — liés par `recipeId`.
 - **shoppingLists** / **shoppingListItems** — `sourceRecipeIds` (JSON) trace
   la provenance de chaque ligne agrégée.
+- **groups** / **groupMembers** / **groupInvites** — foyers partagés (voir
+  ci-dessous).
 
 Pas de RLS (SQLite n'en a pas) : chaque route vérifie explicitement
-`recipe.userId === user.id` avant de lire/écrire — voir
+`recipe.groupId === groupId` avant de lire/écrire — voir
 `apps/api/src/routes/recipes.ts`.
+
+### Groupes (foyers partagés)
+
+Chaque utilisateur appartient à exactement un groupe à la fois
+(`groupMembers.userId` unique) — un utilisateur seul a simplement un groupe
+dont il est l'unique membre, créé automatiquement à l'inscription
+(`auth.ts`, `databaseHooks.user.create.after`) ou à la volée si besoin
+(`middleware/require-auth.ts`, filet de sécurité). `recipes`, `pantryItems`
+et `shoppingLists` portent chacun un `groupId` : c'est lui, et non plus
+`userId`, qui détermine l'accès (voir `lib/groups.ts` et les routes
+`recipes`/`pantry`/`shopping-lists`) — `userId` ne sert plus que
+d'attribution ("qui a créé cette ligne").
+
+Invitation par pseudo (`POST /api/groups/invites`), acceptée ou refusée par
+le destinataire (`groupInvites` : une ligne = une invitation en attente,
+supprimée dès qu'elle est traitée). En acceptant, l'utilisateur rejoint le
+groupe de l'inviteur ; ce que deviennent ses données actuelles dépend de son
+groupe de départ (voir `lib/groups.ts`, `moveUserIntoGroup`) :
+- s'il était seul, tout son contenu (recettes/stock/listes) part avec lui —
+  fusion normale entre deux personnes jusque-là seules ;
+- sinon, il part les mains vides (le contenu appartient au groupe qu'il
+  quitte, pas à lui) et un nouveau owner est promu si besoin (membre restant
+  le plus ancien). Même mécanique pour un départ volontaire
+  (`POST /api/groups/leave`) ou une exclusion par le owner
+  (`DELETE /api/groups/members/:userId`).
+
+**`group_id` reste nullable au niveau SQLite** sur `recipes`/`pantryItems`/
+`shoppingLists`, alors qu'il est conceptuellement obligatoire : SQLite ne
+permet pas d'ajouter une colonne `NOT NULL` sans défaut sur une table
+existante, et resserrer la contrainte après coup demanderait une
+reconstruction de table. L'application garantit elle-même qu'il est toujours
+renseigné à l'écriture — même logique que l'absence de RLS ci-dessus, pas de
+filet de sécurité au niveau du schéma. Les comptes créés avant cette
+fonctionnalité ont été rattachés à un groupe solo par
+`scripts/backfill-groups.ts` (one-off, idempotent).
 
 **Partage public** : `GET /api/recipes/shared/:token` est la seule route non
 authentifiée. Elle retire systématiquement `notes` et `userId` de la
@@ -240,6 +295,20 @@ redéploie les deux services.
    l'échec observé plus tôt était bien une limite du navigateur sandboxé de
    l'outil, pas un bug de l'app. Recherche/tags par ingrédient restent hors
    scope (les ingrédients ne sont pas chargés dans la liste).
+   - Écran de chargement d'ouverture ✅ — `SplashScreen` (logo `mark.svg` en
+     grand, animation CSS "battement de cœur", respecte
+     `prefers-reduced-motion`), affiché par `RequireAuth` pendant la
+     vérification de session (`useSession().isPending`).
+9. **Groupes partagés (foyers)** ✅ — voir §4 (Groupes) pour le modèle de
+   données et la logique de fusion/départ (`lib/groups.ts`), et
+   `routes/groups.ts` pour les routes (`GET/PATCH /me`, invitations, `leave`,
+   exclusion de membre). `GroupPage` côté web (renommer le groupe, inviter
+   par pseudo, accepter/refuser/révoquer une invitation, quitter le groupe).
+   Testé de bout en bout (deux comptes, invitation, acceptation, recette et
+   article de stock du premier compte visibles depuis le second après
+   fusion). Migration + backfill des comptes existants appliqués en
+   production (voir `scripts/run-migrate.ts` et `scripts/backfill-groups.ts`,
+   §2 pour la note Windows sur `drizzle-kit migrate`).
 
 ---
 
@@ -259,17 +328,20 @@ redéploie les deux services.
   extraction IA, qui doit rester jetable).
 - `GEMINI_API_KEY` est une variable serveur uniquement (Render), jamais
   `VITE_*` — elle finirait dans le bundle client.
-- Chaque nouvelle route doit filtrer explicitement par `user_id` : pas de
-  RLS pour rattraper un oubli.
+- Chaque nouvelle route doit filtrer explicitement par `group_id` (pas
+  `user_id`, voir §4) : pas de RLS pour rattraper un oubli.
+- `POST /api/groups/invites` révèle elle aussi si un pseudo existe ou non
+  (comme `POST /api/recipes/:id/shares`) — même rate-limit et même
+  raisonnement, voir `INVITE_RATE_LIMIT` dans `routes/groups.ts`.
 - `share_token` doit rester imprévisible (UUID v4) et révocable — c'est déjà
   le cas (`POST/DELETE /api/recipes/:id/share`).
 - **Rate-limit en mémoire, mono-process.** `isRateLimited` (`src/lib/rate-limit.ts`,
-  utilisé pour `POST /:id/shares`) et le rate-limit natif de better-auth sur
-  `/sign-in/email` et `/sign-up/email` (`rateLimit.customRules` dans
-  `auth.ts`) stockent tous les deux leurs compteurs en mémoire du process —
-  scellé au seul Web Service Render actuel. Si l'app passe un jour à
-  plusieurs instances, ces compteurs ne seraient plus partagés (chaque
-  instance aurait sa propre limite effective, multipliée par le nombre
-  d'instances) : il faudrait alors un stockage partagé (`storage: "database"`
-  ou `"secondary-storage"` côté better-auth ; réécrire `isRateLimited` sur la
-  même base pour `/shares`).
+  utilisé pour `POST /:id/shares` et `POST /api/groups/invites`) et le
+  rate-limit natif de better-auth sur `/sign-in/email` et `/sign-up/email`
+  (`rateLimit.customRules` dans `auth.ts`) stockent tous les deux leurs
+  compteurs en mémoire du process — scellé au seul Web Service Render
+  actuel. Si l'app passe un jour à plusieurs instances, ces compteurs ne
+  seraient plus partagés (chaque instance aurait sa propre limite effective,
+  multipliée par le nombre d'instances) : il faudrait alors un stockage
+  partagé (`storage: "database"` ou `"secondary-storage"` côté better-auth ;
+  réécrire `isRateLimited` sur la même base pour `/shares` et `/invites`).

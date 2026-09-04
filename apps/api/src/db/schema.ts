@@ -5,6 +5,65 @@ import { sql } from "drizzle-orm";
 import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { user } from "./auth-schema.js";
 
+// Un groupe (type "foyer") partage recettes/stock/listes de courses entre
+// ses membres. Chaque utilisateur appartient à exactement un groupe à la
+// fois (voir group_members.userId, contrainte unique ci-dessous) — un
+// utilisateur seul a simplement un groupe dont il est l'unique membre,
+// créé automatiquement à l'inscription (voir auth.ts, databaseHooks) ou à
+// la volée si besoin (voir lib/groups.ts, getOrCreateGroupForUser).
+export const groups = sqliteTable("groups", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  name: text("name").notNull(),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(current_timestamp)`),
+});
+
+export const groupMembers = sqliteTable("group_members", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  groupId: text("group_id")
+    .notNull()
+    .references(() => groups.id, { onDelete: "cascade" }),
+  // .unique() encode "un seul groupe par utilisateur" directement en base :
+  // un deuxième insert pour le même userId échoue plutôt que de créer une
+  // double appartenance (voir lib/groups.ts pour la gestion de la course
+  // concurrente à la création).
+  userId: text("user_id")
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: "cascade" }),
+  role: text("role", { enum: ["owner", "member"] }).notNull().default("member"),
+  joinedAt: text("joined_at")
+    .notNull()
+    .default(sql`(current_timestamp)`),
+});
+
+// Invitation par pseudo en attente. Une ligne = une invitation en attente ;
+// accepter/refuser/révoquer supprime simplement la ligne (pas d'historique,
+// cohérent avec le reste de l'appli — ex. shareToken réécrit plutôt
+// qu'historisé sur `recipes`).
+export const groupInvites = sqliteTable("group_invites", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  groupId: text("group_id")
+    .notNull()
+    .references(() => groups.id, { onDelete: "cascade" }),
+  inviterUserId: text("inviter_user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  inviteeUserId: text("invitee_user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(current_timestamp)`),
+});
+
 export const recipes = sqliteTable("recipes", {
   id: text("id")
     .primaryKey()
@@ -12,6 +71,14 @@ export const recipes = sqliteTable("recipes", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
+  // Groupe propriétaire — c'est lui qui détermine qui a accès à la recette
+  // (voir routes/recipes.ts), pas userId qui ne sert plus que d'attribution
+  // ("qui l'a créée"). Nullable en base pour une raison purement technique
+  // SQLite (voir groups ci-dessus et ARCHITECTURE.md) : SQLite ne permet pas
+  // d'ajouter une colonne NOT NULL sans défaut sur une table existante, donc
+  // chaque écriture applicative garantit elle-même qu'il est renseigné,
+  // plutôt qu'un filet de sécurité au niveau du schéma.
+  groupId: text("group_id").references(() => groups.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   servings: integer("servings"),
   prepTimeMinutes: integer("prep_time_minutes"),
@@ -78,6 +145,8 @@ export const pantryItems = sqliteTable("pantry_items", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
+  // Voir le commentaire équivalent sur recipes.groupId — même raisonnement.
+  groupId: text("group_id").references(() => groups.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   quantity: real("quantity"), // null = "j'en ai", quantité non suivie
   unit: text("unit"),
@@ -93,6 +162,8 @@ export const shoppingLists = sqliteTable("shopping_lists", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
+  // Voir le commentaire équivalent sur recipes.groupId — même raisonnement.
+  groupId: text("group_id").references(() => groups.id, { onDelete: "cascade" }),
   name: text("name").notNull().default("Liste de courses"),
   createdAt: text("created_at")
     .notNull()

@@ -1,11 +1,12 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useSession } from "../lib/auth-client";
+import { SplashScreen } from "./SplashScreen";
 
 export function RequireAuth() {
   const { data: session, isPending } = useSession();
 
   if (isPending) {
-    return <div className="grid min-h-svh place-items-center text-(--color-text-muted)">Chargement…</div>;
+    return <SplashScreen />;
   }
 
   if (!session) {

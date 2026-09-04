@@ -11,25 +11,25 @@ import type { AppEnv } from "../types.js";
 export const shoppingListsRoute = new Hono<AppEnv>();
 shoppingListsRoute.use("*", requireAuth);
 
-// GET /api/shopping-lists — mes listes (sans le détail des lignes)
+// GET /api/shopping-lists — les listes du groupe (sans le détail des lignes)
 shoppingListsRoute.get("/", async (c) => {
-  const user = c.get("user");
+  const groupId = c.get("groupId");
   const rows = await db
     .select()
     .from(shoppingLists)
-    .where(eq(shoppingLists.userId, user.id))
+    .where(eq(shoppingLists.groupId, groupId))
     .orderBy(desc(shoppingLists.createdAt));
   return c.json(rows);
 });
 
 // GET /api/shopping-lists/:id — détail avec les lignes
 shoppingListsRoute.get("/:id", async (c) => {
-  const user = c.get("user");
+  const groupId = c.get("groupId");
   const id = c.req.param("id");
   const [list] = await db
     .select()
     .from(shoppingLists)
-    .where(and(eq(shoppingLists.id, id), eq(shoppingLists.userId, user.id)));
+    .where(and(eq(shoppingLists.id, id), eq(shoppingLists.groupId, groupId)));
   if (!list) return c.json({ message: "Liste introuvable." }, 404);
 
   const items = await db
@@ -50,6 +50,7 @@ const createInput = z.object({
 // (avec multiplicateur de portions), agrège les ingrédients communs.
 shoppingListsRoute.post("/", async (c) => {
   const user = c.get("user");
+  const groupId = c.get("groupId");
   const parsed = createInput.safeParse(await c.req.json());
   if (!parsed.success) {
     return c.json({ message: "Requête invalide.", issues: parsed.error.issues }, 400);
@@ -57,18 +58,18 @@ shoppingListsRoute.post("/", async (c) => {
   const { name, recipes: selection } = parsed.data;
   const recipeIds = selection.map((s) => s.recipeId);
 
-  // On ne peut composer qu'à partir de SES propres recettes.
+  // On ne peut composer qu'à partir des recettes de SON groupe.
   const owned = await db
     .select({ id: recipes.id })
     .from(recipes)
-    .where(and(inArray(recipes.id, recipeIds), eq(recipes.userId, user.id)));
+    .where(and(inArray(recipes.id, recipeIds), eq(recipes.groupId, groupId)));
   if (owned.length !== recipeIds.length) {
     return c.json({ message: "Une ou plusieurs recettes sont introuvables." }, 404);
   }
 
   const [allIngredients, pantry] = await Promise.all([
     db.select().from(ingredients).where(inArray(ingredients.recipeId, recipeIds)),
-    db.select().from(pantryItems).where(eq(pantryItems.userId, user.id)),
+    db.select().from(pantryItems).where(eq(pantryItems.groupId, groupId)),
   ]);
 
   const multipliers = Object.fromEntries(selection.map((s) => [s.recipeId, s.multiplier]));
@@ -91,7 +92,7 @@ shoppingListsRoute.post("/", async (c) => {
   const created = await db.transaction(async (tx) => {
     const [list] = await tx
       .insert(shoppingLists)
-      .values({ userId: user.id, name: name ?? "Liste de courses" })
+      .values({ userId: user.id, groupId, name: name ?? "Liste de courses" })
       .returning();
 
     if (toBuy.length > 0) {
@@ -125,6 +126,7 @@ const patchItemInput = z.object({ checked: z.boolean() });
 // on la retire (voir lib/pantry-match.ts, planPantryAdjustment).
 shoppingListsRoute.patch("/:id/items/:itemId", async (c) => {
   const user = c.get("user");
+  const groupId = c.get("groupId");
   const { id, itemId } = c.req.param();
   const parsed = patchItemInput.safeParse(await c.req.json());
   if (!parsed.success) return c.json({ message: "Requête invalide." }, 400);
@@ -132,7 +134,7 @@ shoppingListsRoute.patch("/:id/items/:itemId", async (c) => {
   const [list] = await db
     .select({ id: shoppingLists.id })
     .from(shoppingLists)
-    .where(and(eq(shoppingLists.id, id), eq(shoppingLists.userId, user.id)));
+    .where(and(eq(shoppingLists.id, id), eq(shoppingLists.groupId, groupId)));
   if (!list) return c.json({ message: "Liste introuvable." }, 404);
 
   const [item] = await db
@@ -147,7 +149,7 @@ shoppingListsRoute.patch("/:id/items/:itemId", async (c) => {
     .where(and(eq(shoppingListItems.id, itemId), eq(shoppingListItems.shoppingListId, id)));
 
   if (parsed.data.checked !== item.checked) {
-    const pantry = await db.select().from(pantryItems).where(eq(pantryItems.userId, user.id));
+    const pantry = await db.select().from(pantryItems).where(eq(pantryItems.groupId, groupId));
     const adjustment = planPantryAdjustment(
       { name: item.name, quantity: item.quantity, unit: item.unit },
       pantry,
@@ -162,6 +164,7 @@ shoppingListsRoute.patch("/:id/items/:itemId", async (c) => {
     } else if (adjustment.kind === "create") {
       await db.insert(pantryItems).values({
         userId: user.id,
+        groupId,
         name: adjustment.name,
         quantity: adjustment.quantity,
         unit: adjustment.unit,
@@ -178,7 +181,7 @@ const renameInput = z.object({
 
 // PATCH /api/shopping-lists/:id — renomme une liste
 shoppingListsRoute.patch("/:id", async (c) => {
-  const user = c.get("user");
+  const groupId = c.get("groupId");
   const id = c.req.param("id");
   const parsed = renameInput.safeParse(await c.req.json());
   if (!parsed.success) {
@@ -188,7 +191,7 @@ shoppingListsRoute.patch("/:id", async (c) => {
   const [list] = await db
     .select({ id: shoppingLists.id })
     .from(shoppingLists)
-    .where(and(eq(shoppingLists.id, id), eq(shoppingLists.userId, user.id)));
+    .where(and(eq(shoppingLists.id, id), eq(shoppingLists.groupId, groupId)));
   if (!list) return c.json({ message: "Liste introuvable." }, 404);
 
   await db.update(shoppingLists).set({ name: parsed.data.name }).where(eq(shoppingLists.id, id));
@@ -197,12 +200,12 @@ shoppingListsRoute.patch("/:id", async (c) => {
 
 // DELETE /api/shopping-lists/:id
 shoppingListsRoute.delete("/:id", async (c) => {
-  const user = c.get("user");
+  const groupId = c.get("groupId");
   const id = c.req.param("id");
   const [list] = await db
     .select({ id: shoppingLists.id })
     .from(shoppingLists)
-    .where(and(eq(shoppingLists.id, id), eq(shoppingLists.userId, user.id)));
+    .where(and(eq(shoppingLists.id, id), eq(shoppingLists.groupId, groupId)));
   if (!list) return c.json({ message: "Liste introuvable." }, 404);
 
   await db.delete(shoppingLists).where(eq(shoppingLists.id, id));

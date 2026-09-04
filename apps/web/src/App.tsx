@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { RequireAuth } from "./components/RequireAuth";
+import { GroupPage } from "./pages/GroupPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { PantryPage } from "./pages/PantryPage";
@@ -28,6 +29,7 @@ function App() {
           <Route path="courses" element={<ShoppingListsPage />} />
           <Route path="courses/:id" element={<ShoppingListDetailPage />} />
           <Route path="stock" element={<PantryPage />} />
+          <Route path="groupe" element={<GroupPage />} />
         </Route>
       </Route>
 

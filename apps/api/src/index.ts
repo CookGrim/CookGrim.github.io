@@ -6,6 +6,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { auth } from "./auth.js";
 import { requireOrigin } from "./middleware/require-origin.js";
 import { extractRoute } from "./routes/extract.js";
+import { groupsRoute } from "./routes/groups.js";
 import { pantryRoute } from "./routes/pantry.js";
 import { recipesRoute } from "./routes/recipes.js";
 import { shoppingListsRoute } from "./routes/shopping-lists.js";
@@ -41,11 +42,13 @@ app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 app.use("/api/recipes/*", requireOrigin);
 app.use("/api/shopping-lists/*", requireOrigin);
 app.use("/api/pantry/*", requireOrigin);
+app.use("/api/groups/*", requireOrigin);
 
 app.route("/api/recipes/extract", extractRoute);
 app.route("/api/recipes", recipesRoute);
 app.route("/api/shopping-lists", shoppingListsRoute);
 app.route("/api/pantry", pantryRoute);
+app.route("/api/groups", groupsRoute);
 
 const port = Number(process.env.PORT) || 8787;
 serve({ fetch: app.fetch, port }, (info) => {

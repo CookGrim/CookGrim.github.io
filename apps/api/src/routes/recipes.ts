@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "../db/client.js";
 import { user } from "../db/auth-schema.js";
 import { ingredients, pantryItems, recipes, steps } from "../db/schema.js";
+import { getOrCreateGroupForUser } from "../lib/groups.js";
 import { computeMissing, planPantryAdjustment } from "../lib/pantry-match.js";
 import { isRateLimited } from "../lib/rate-limit.js";
 import { requireAuth } from "../middleware/require-auth.js";
@@ -28,13 +29,13 @@ async function loadFullRecipe(recipeId: string) {
   };
 }
 
-// GET /api/recipes — liste des recettes de l'utilisateur (sans le détail)
+// GET /api/recipes — liste des recettes du groupe (sans le détail)
 recipesRoute.get("/", requireAuth, async (c) => {
-  const user = c.get("user");
+  const groupId = c.get("groupId");
   const rows = await db
     .select()
     .from(recipes)
-    .where(eq(recipes.userId, user.id))
+    .where(eq(recipes.groupId, groupId))
     .orderBy(desc(recipes.updatedAt));
   return c.json(rows);
 });
@@ -42,6 +43,7 @@ recipesRoute.get("/", requireAuth, async (c) => {
 // POST /api/recipes — crée une recette + ses ingrédients + ses étapes
 recipesRoute.post("/", requireAuth, async (c) => {
   const user = c.get("user");
+  const groupId = c.get("groupId");
   const parsed = recipeInputSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return c.json({ message: "Recette invalide.", issues: parsed.error.issues }, 400);
@@ -53,6 +55,7 @@ recipesRoute.post("/", requireAuth, async (c) => {
       .insert(recipes)
       .values({
         userId: user.id,
+        groupId,
         title: input.title,
         servings: input.servings,
         prepTimeMinutes: input.prepTimeMinutes,
@@ -95,17 +98,17 @@ recipesRoute.post("/", requireAuth, async (c) => {
 // recette, comparé au stock courant (voir lib/pantry-match.ts). Enregistrée
 // avant /:id pour ne jamais être capturée par ce paramètre dynamique.
 recipesRoute.get("/missing-counts", requireAuth, async (c) => {
-  const user = c.get("user");
-  const userRecipes = await db
+  const groupId = c.get("groupId");
+  const groupRecipes = await db
     .select({ id: recipes.id })
     .from(recipes)
-    .where(eq(recipes.userId, user.id));
-  const recipeIds = userRecipes.map((r) => r.id);
+    .where(eq(recipes.groupId, groupId));
+  const recipeIds = groupRecipes.map((r) => r.id);
   if (recipeIds.length === 0) return c.json([]);
 
   const [allIngredients, pantry] = await Promise.all([
     db.select().from(ingredients).where(inArray(ingredients.recipeId, recipeIds)),
-    db.select().from(pantryItems).where(eq(pantryItems.userId, user.id)),
+    db.select().from(pantryItems).where(eq(pantryItems.groupId, groupId)),
   ]);
 
   const ingredientsByRecipe = new Map<string, typeof allIngredients>();
@@ -123,11 +126,11 @@ recipesRoute.get("/missing-counts", requireAuth, async (c) => {
   return c.json(result);
 });
 
-// GET /api/recipes/:id — détail (propriétaire uniquement)
+// GET /api/recipes/:id — détail (membres du groupe uniquement)
 recipesRoute.get("/:id", requireAuth, async (c) => {
-  const user = c.get("user");
+  const groupId = c.get("groupId");
   const recipe = await loadFullRecipe(c.req.param("id"));
-  if (!recipe || recipe.userId !== user.id) {
+  if (!recipe || recipe.groupId !== groupId) {
     return c.json({ message: "Recette introuvable." }, 404);
   }
   return c.json(recipe);
@@ -135,7 +138,7 @@ recipesRoute.get("/:id", requireAuth, async (c) => {
 
 // PUT /api/recipes/:id — remplace les champs + réécrit ingrédients/étapes
 recipesRoute.put("/:id", requireAuth, async (c) => {
-  const user = c.get("user");
+  const groupId = c.get("groupId");
   const id = c.req.param("id");
   const parsed = recipeInputSchema.safeParse(await c.req.json());
   if (!parsed.success) {
@@ -144,7 +147,7 @@ recipesRoute.put("/:id", requireAuth, async (c) => {
   const input = parsed.data;
 
   const [existing] = await db.select().from(recipes).where(eq(recipes.id, id));
-  if (!existing || existing.userId !== user.id) {
+  if (!existing || existing.groupId !== groupId) {
     return c.json({ message: "Recette introuvable." }, 404);
   }
 
@@ -189,10 +192,10 @@ recipesRoute.put("/:id", requireAuth, async (c) => {
 
 // DELETE /api/recipes/:id
 recipesRoute.delete("/:id", requireAuth, async (c) => {
-  const user = c.get("user");
+  const groupId = c.get("groupId");
   const id = c.req.param("id");
   const [existing] = await db.select().from(recipes).where(eq(recipes.id, id));
-  if (!existing || existing.userId !== user.id) {
+  if (!existing || existing.groupId !== groupId) {
     return c.json({ message: "Recette introuvable." }, 404);
   }
   await db.delete(recipes).where(eq(recipes.id, id));
@@ -210,6 +213,7 @@ const consumeInput = z.object({
 // stock : seul ce qui est réellement en stock diminue, jamais sous zéro.
 recipesRoute.post("/:id/consume", requireAuth, async (c) => {
   const user = c.get("user");
+  const groupId = c.get("groupId");
   const id = c.req.param("id");
   const parsed = consumeInput.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) {
@@ -219,11 +223,11 @@ recipesRoute.post("/:id/consume", requireAuth, async (c) => {
   const [recipe] = await db
     .select({ id: recipes.id })
     .from(recipes)
-    .where(and(eq(recipes.id, id), eq(recipes.userId, user.id)));
+    .where(and(eq(recipes.id, id), eq(recipes.groupId, groupId)));
   if (!recipe) return c.json({ message: "Recette introuvable." }, 404);
 
   const recipeIngredients = await db.select().from(ingredients).where(eq(ingredients.recipeId, id));
-  let pantry = await db.select().from(pantryItems).where(eq(pantryItems.userId, user.id));
+  let pantry = await db.select().from(pantryItems).where(eq(pantryItems.groupId, groupId));
 
   const updates = new Map<string, number>();
   const summary: { name: string; decremented: boolean }[] = [];
@@ -265,11 +269,12 @@ const shareWithUserInput = z.object({
 });
 
 // POST /api/recipes/:id/shares — copie immédiate de la recette dans le
-// compte d'un autre utilisateur, désigné par son pseudo. Pas de lien vivant
-// avec l'original ni de session requise côté destinataire : la copie
-// atterrit directement chez lui, comme le fait déjà "Importer dans mes
-// recettes" depuis un lien public (voir GET /shared/:token côté web), mais
-// sans passer par un lien à faire suivre.
+// groupe d'un autre utilisateur, désigné par son pseudo (fonctionnalité
+// distincte des invitations de groupe : ici, une copie ponctuelle atterrit
+// chez lui — et donc chez ses covivants — sans qu'il ait besoin de rejoindre
+// quoi que ce soit). Pas de lien vivant avec l'original ni de session
+// requise côté destinataire, comme le fait déjà "Importer dans mes
+// recettes" depuis un lien public (voir GET /shared/:token côté web).
 // 20/heure/expéditeur : c'est aussi la seule route de l'app qui répond
 // différemment selon qu'un pseudo existe ou non ("Pseudo introuvable.") —
 // cette limite empêche un compte authentifié de s'en servir pour sonder
@@ -278,6 +283,7 @@ const SHARE_RATE_LIMIT = { max: 20, windowMs: 60 * 60 * 1000 };
 
 recipesRoute.post("/:id/shares", requireAuth, async (c) => {
   const sender = c.get("user");
+  const senderGroupId = c.get("groupId");
   if (isRateLimited(`share:${sender.id}`, SHARE_RATE_LIMIT.max, SHARE_RATE_LIMIT.windowMs)) {
     return c.json({ message: "Trop d'envois, réessayez plus tard." }, 429);
   }
@@ -289,17 +295,21 @@ recipesRoute.post("/:id/shares", requireAuth, async (c) => {
   }
 
   const source = await loadFullRecipe(id);
-  if (!source || source.userId !== sender.id) {
+  if (!source || source.groupId !== senderGroupId) {
     return c.json({ message: "Recette introuvable." }, 404);
   }
 
   const [recipient] = await db
-    .select({ id: user.id })
+    .select({ id: user.id, name: user.name })
     .from(user)
     .where(eq(user.email, pseudoToEmail(parsed.data.pseudo)));
   if (!recipient) return c.json({ message: "Pseudo introuvable." }, 404);
   if (recipient.id === sender.id) {
     return c.json({ message: "Vous ne pouvez pas vous partager une recette à vous-même." }, 400);
+  }
+  const recipientGroupId = await getOrCreateGroupForUser(recipient.id, recipient.name);
+  if (recipientGroupId === senderGroupId) {
+    return c.json({ message: "Cette personne fait déjà partie de votre groupe." }, 400);
   }
 
   const copy = await db.transaction(async (tx) => {
@@ -307,6 +317,7 @@ recipesRoute.post("/:id/shares", requireAuth, async (c) => {
       .insert(recipes)
       .values({
         userId: recipient.id,
+        groupId: recipientGroupId,
         title: source.title,
         servings: source.servings,
         prepTimeMinutes: source.prepTimeMinutes,
@@ -342,12 +353,12 @@ recipesRoute.post("/:id/shares", requireAuth, async (c) => {
 
 // POST /api/recipes/:id/share — (re)génère le lien public, révoque l'ancien
 recipesRoute.post("/:id/share", requireAuth, async (c) => {
-  const user = c.get("user");
+  const groupId = c.get("groupId");
   const id = c.req.param("id");
   const [existing] = await db
     .select()
     .from(recipes)
-    .where(and(eq(recipes.id, id), eq(recipes.userId, user.id)));
+    .where(and(eq(recipes.id, id), eq(recipes.groupId, groupId)));
   if (!existing) return c.json({ message: "Recette introuvable." }, 404);
 
   const shareToken = crypto.randomUUID();
@@ -357,12 +368,12 @@ recipesRoute.post("/:id/share", requireAuth, async (c) => {
 
 // DELETE /api/recipes/:id/share — révoque le lien public
 recipesRoute.delete("/:id/share", requireAuth, async (c) => {
-  const user = c.get("user");
+  const groupId = c.get("groupId");
   const id = c.req.param("id");
   const [existing] = await db
     .select()
     .from(recipes)
-    .where(and(eq(recipes.id, id), eq(recipes.userId, user.id)));
+    .where(and(eq(recipes.id, id), eq(recipes.groupId, groupId)));
   if (!existing) return c.json({ message: "Recette introuvable." }, 404);
 
   await db.update(recipes).set({ shareToken: null }).where(eq(recipes.id, id));
@@ -378,6 +389,6 @@ recipesRoute.get("/shared/:token", async (c) => {
 
   const full = await loadFullRecipe(recipe.id);
   if (!full) return c.json({ message: "Lien invalide ou révoqué." }, 404);
-  const { notes: _notes, userId: _userId, ...publicRecipe } = full;
+  const { notes: _notes, userId: _userId, groupId: _groupId, ...publicRecipe } = full;
   return c.json(publicRecipe);
 });

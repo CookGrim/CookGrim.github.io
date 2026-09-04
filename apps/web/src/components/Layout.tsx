@@ -6,6 +6,7 @@ const navItems = [
   { to: "/", label: "Recettes", end: true },
   { to: "/courses", label: "Liste de courses" },
   { to: "/stock", label: "Mon stock" },
+  { to: "/groupe", label: "Groupe" },
 ];
 
 export function Layout() {
