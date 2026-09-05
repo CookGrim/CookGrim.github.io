@@ -74,3 +74,11 @@ export function useRemoveGroupMember() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["group"] }),
   });
 }
+
+export function useTransferOwnership() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => api.post(`/api/groups/members/${userId}/owner`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["group"] }),
+  });
+}

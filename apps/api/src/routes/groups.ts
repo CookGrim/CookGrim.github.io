@@ -255,3 +255,41 @@ groupsRoute.delete("/members/:userId", async (c) => {
   await moveUserToFreshSoloGroup(target.id, target.name);
   return c.body(null, 204);
 });
+
+// POST /api/groups/members/:userId/owner — le owner transfère la propriété
+// du groupe à un autre membre. Contrairement au transfert automatique de
+// promoteNewOwner (lib/groups.ts, déclenché quand le owner quitte le
+// groupe), l'ancien owner reste ici dans le groupe : il redevient membre.
+groupsRoute.post("/members/:userId/owner", async (c) => {
+  const caller = c.get("user");
+  const groupId = c.get("groupId");
+  const targetUserId = c.req.param("userId");
+
+  if (targetUserId === caller.id) {
+    return c.json({ message: "Vous êtes déjà propriétaire du groupe." }, 400);
+  }
+
+  const [callerMembership] = await db
+    .select({ role: groupMembers.role })
+    .from(groupMembers)
+    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, caller.id)));
+  if (callerMembership?.role !== "owner") {
+    return c.json({ message: "Seul le propriétaire du groupe peut transférer ce rôle." }, 403);
+  }
+
+  const [target] = await db
+    .select({ id: groupMembers.id })
+    .from(groupMembers)
+    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, targetUserId)));
+  if (!target) return c.json({ message: "Membre introuvable." }, 404);
+
+  await db.transaction(async (tx) => {
+    await tx.update(groupMembers).set({ role: "owner" }).where(eq(groupMembers.id, target.id));
+    await tx
+      .update(groupMembers)
+      .set({ role: "member" })
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, caller.id)));
+  });
+
+  return c.body(null, 204);
+});

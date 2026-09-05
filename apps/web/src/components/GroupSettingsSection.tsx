@@ -10,6 +10,7 @@ import {
   useRemoveGroupMember,
   useRenameGroup,
   useRevokeInvite,
+  useTransferOwnership,
 } from "../lib/queries/group";
 
 function errorMessage(err: unknown, fallback: string): string {
@@ -26,6 +27,7 @@ export function GroupSettingsSection() {
   const declineInvite = useDeclineInvite();
   const leaveGroup = useLeaveGroup();
   const removeMember = useRemoveGroupMember();
+  const transferOwnership = useTransferOwnership();
 
   const [name, setName] = useState("");
   const [isEditingName, setIsEditingName] = useState(false);
@@ -80,6 +82,14 @@ export function GroupSettingsSection() {
   const onRemoveMember = (userId: string, pseudo: string) => {
     if (window.confirm(`Retirer @${pseudo} du groupe ?`)) {
       removeMember.mutate(userId);
+    }
+  };
+
+  const onTransferOwnership = (userId: string, pseudo: string) => {
+    if (
+      window.confirm(`Faire de @${pseudo} le nouveau propriétaire du groupe ? Vous deviendrez simple membre.`)
+    ) {
+      transferOwnership.mutate(userId);
     }
   };
 
@@ -144,6 +154,15 @@ export function GroupSettingsSection() {
                 <span className="rounded-full bg-(--color-saffron)/20 px-2 py-0.5 text-xs font-medium text-(--color-text)">
                   Propriétaire
                 </span>
+              )}
+              {isOwner && member.userId !== myUserId && (
+                <button
+                  type="button"
+                  onClick={() => onTransferOwnership(member.userId, member.pseudo)}
+                  className="text-sm text-(--color-plum) underline underline-offset-4"
+                >
+                  Nommer propriétaire
+                </button>
               )}
               {isOwner && member.userId !== myUserId && (
                 <button
