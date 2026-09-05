@@ -2,6 +2,19 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Applique le thème choisi (voir src/lib/theme.ts) avant le premier
+      // rendu, pour éviter un flash du mauvais thème. Absence de valeur
+      // stockée = "système" (rien à faire, prefers-color-scheme suffit).
+      (function () {
+        try {
+          var stored = localStorage.getItem("cookgrim-theme");
+          if (stored === "light" || stored === "dark") {
+            document.documentElement.setAttribute("data-theme", stored);
+          }
+        } catch (e) {}
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/mark.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />

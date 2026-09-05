@@ -16,7 +16,7 @@ function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
 }
 
-export function GroupPage() {
+export function GroupSettingsSection() {
   const { data: session } = useSession();
   const { data: group, isLoading, isError } = useGroup();
   const renameGroup = useRenameGroup();
@@ -84,15 +84,7 @@ export function GroupPage() {
   };
 
   return (
-    <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="font-display text-2xl font-semibold text-(--color-text)">Mon groupe</h1>
-        <p className="mt-1 text-sm text-(--color-text-muted)">
-          Les membres d'un même groupe partagent les mêmes recettes, la même liste de courses et le
-          même stock.
-        </p>
-      </div>
-
+    <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-3 rounded-xl border border-(--color-surface-line) bg-(--color-surface) p-4">
         {isEditingName ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -121,9 +113,9 @@ export function GroupPage() {
           </div>
         ) : (
           <div className="flex items-center justify-between gap-3">
-            <h2 className="font-display text-lg font-semibold text-(--color-text)">
+            <h3 className="font-display text-lg font-semibold text-(--color-text)">
               {group.group.name}
-            </h2>
+            </h3>
             <button
               type="button"
               onClick={onStartRename}
@@ -178,9 +170,9 @@ export function GroupPage() {
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="font-display text-lg font-semibold text-(--color-text)">
+        <h3 className="font-display text-base font-semibold text-(--color-text)">
           Inviter quelqu'un
-        </h2>
+        </h3>
         <form onSubmit={onInvite} className="flex flex-wrap items-center gap-2">
           <input
             value={pseudo}
@@ -225,9 +217,9 @@ export function GroupPage() {
 
       {group.receivedInvites.length > 0 && (
         <section className="flex flex-col gap-3">
-          <h2 className="font-display text-lg font-semibold text-(--color-text)">
+          <h3 className="font-display text-base font-semibold text-(--color-text)">
             Invitations reçues
-          </h2>
+          </h3>
           <ul className="flex flex-col gap-2">
             {group.receivedInvites.map((invite) => (
               <li

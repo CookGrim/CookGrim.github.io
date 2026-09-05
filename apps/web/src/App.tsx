@@ -1,13 +1,13 @@
 import { Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { RequireAuth } from "./components/RequireAuth";
-import { GroupPage } from "./pages/GroupPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { PantryPage } from "./pages/PantryPage";
 import { RecipeDetailPage } from "./pages/RecipeDetailPage";
 import { RecipeFormPage } from "./pages/RecipeFormPage";
 import { RecipesPage } from "./pages/RecipesPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { SharedRecipePage } from "./pages/SharedRecipePage";
 import { ShoppingListDetailPage } from "./pages/ShoppingListDetailPage";
 import { ShoppingListsPage } from "./pages/ShoppingListsPage";
@@ -29,7 +29,7 @@ function App() {
           <Route path="courses" element={<ShoppingListsPage />} />
           <Route path="courses/:id" element={<ShoppingListDetailPage />} />
           <Route path="stock" element={<PantryPage />} />
-          <Route path="groupe" element={<GroupPage />} />
+          <Route path="reglages" element={<SettingsPage />} />
         </Route>
       </Route>
 

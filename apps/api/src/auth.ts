@@ -105,6 +105,21 @@ export const auth = betterAuth({
         }
       }
 
+      if (ctx.path === "/change-password") {
+        // Même contrainte de format que sign-up/sign-in, sur le nouveau
+        // code cette fois (voir écran Réglages). Le code actuel n'a pas à
+        // respecter ce format : sa validité est vérifiée par comparaison
+        // de hash par le handler natif, pas par sa forme — un compte
+        // encore sur l'ancien code à 4 chiffres doit pouvoir migrer vers
+        // un code à 6 chiffres via ce endpoint.
+        const newPassword = (ctx.body as { newPassword?: unknown } | undefined)?.newPassword;
+        if (typeof newPassword !== "string" || !PIN_PATTERN.test(newPassword)) {
+          throw new APIError("BAD_REQUEST", {
+            message: "Le nouveau code doit contenir exactement 6 chiffres.",
+          });
+        }
+      }
+
       if (ctx.path === "/sign-in/email") {
         const email = (ctx.body as { email?: unknown } | undefined)?.email;
         if (typeof email === "string") {

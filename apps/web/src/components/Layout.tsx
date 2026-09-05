@@ -1,34 +1,59 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { signOut, useSession } from "../lib/auth-client";
+import { NavLink, Outlet } from "react-router-dom";
+import { useSession } from "../lib/auth-client";
 import { useOfflineQueueCount } from "../lib/hooks/use-offline-queue-count";
 
 const navItems = [
   { to: "/", label: "Recettes", end: true },
   { to: "/courses", label: "Liste de courses" },
   { to: "/stock", label: "Mon stock" },
-  { to: "/groupe", label: "Groupe" },
 ];
 
 export function Layout() {
-  const navigate = useNavigate();
   const { data: session } = useSession();
   const pendingCount = useOfflineQueueCount();
-
-  const onSignOut = async () => {
-    await signOut();
-    navigate("/login", { replace: true });
-  };
 
   return (
     <div className="flex min-h-svh flex-col">
       <header className="border-b border-(--color-surface-line)">
         <div className="mx-auto flex max-w-3xl flex-col gap-3 px-6 py-4">
-          <NavLink to="/" className="flex items-center gap-2.5">
-            <img src="/mark.svg" alt="" width={32} height={32} className="rounded-[22%]" />
-            <span className="font-display text-xl font-semibold text-(--color-text)">
-              CookGrim
-            </span>
-          </NavLink>
+          <div className="flex items-center justify-between">
+            <NavLink to="/" className="flex items-center gap-2.5">
+              <img src="/mark.svg" alt="" width={32} height={32} className="rounded-[22%]" />
+              <span className="font-display text-xl font-semibold text-(--color-text)">
+                CookGrim
+              </span>
+            </NavLink>
+            {session && (
+              <NavLink
+                to="/reglages"
+                className={({ isActive }) =>
+                  `rounded-full p-2 transition-colors ${
+                    isActive
+                      ? "bg-(--color-plum) text-(--color-tile-fg)"
+                      : "text-(--color-text-muted) hover:text-(--color-text)"
+                  }`
+                }
+                title="Réglages"
+                aria-label="Réglages"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+              </NavLink>
+            )}
+          </div>
           <nav className="flex items-center gap-1">
             {navItems.map((item) => (
               <NavLink
@@ -46,30 +71,6 @@ export function Layout() {
                 {item.label}
               </NavLink>
             ))}
-            {session && (
-              <button
-                type="button"
-                onClick={onSignOut}
-                className="ml-auto rounded-full p-2 text-(--color-text-muted) hover:text-(--color-text)"
-                title="Se déconnecter"
-                aria-label="Se déconnecter"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="18"
-                  height="18"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <line x1="12" y1="2" x2="12" y2="12" />
-                  <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
-                </svg>
-              </button>
-            )}
           </nav>
         </div>
       </header>
