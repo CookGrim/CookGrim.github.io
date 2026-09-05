@@ -54,16 +54,37 @@ export const auth = betterAuth({
       "/sign-up/email": { window: 60 * 60, max: 10 },
     },
   },
-  // Crée automatiquement le groupe personnel (foyer solo) de tout nouvel
-  // utilisateur — voir db/schema.ts (groups/groupMembers) et lib/groups.ts.
-  // `after` est mis en file après la transaction de création (voir
-  // node_modules/better-auth/dist/db/with-hooks.mjs, queueAfterTransactionHook) :
-  // ne bloque jamais la réponse d'inscription. `getOrCreateGroupForUser` sert
-  // aussi de filet de sécurité dans requireAuth si jamais ce hook n'avait
-  // pas encore couru au moment du premier appel API du nouvel utilisateur.
   databaseHooks: {
     user: {
       create: {
+        // Identifiant lisible plutôt que la chaîne aléatoire générée par
+        // défaut (better-auth n'a accès au pseudo qu'ici, pas dans
+        // `advanced.database.generateId` qui ne reçoit que le nom de
+        // table — voir node_modules/@better-auth/core/dist/types/init-options.d.mts).
+        // Réutilise exactement la partie locale de l'email interne déjà
+        // dérivé du pseudo (`pseudoToEmail`, toujours en minuscules) plutôt
+        // que de reformater le pseudo nous-mêmes : garantit par construction
+        // le même identifiant, donc la même garantie d'unicité que la
+        // contrainte email déjà en place — pas de vérification
+        // supplémentaire nécessaire. `data.email` est toujours au format
+        // `<pseudo en minuscules>@pseudo.cookgrim.local` (seul chemin
+        // d'inscription de l'app, voir SignupPage.tsx). L'adaptateur
+        // respecte cet id explicite (`forceAllowId: true`, voir
+        // db/with-hooks.mjs) — ne s'applique qu'aux nouvelles inscriptions,
+        // les comptes déjà créés gardent leur ancien id aléatoire (le
+        // changer rétroactivement casserait toutes les clés étrangères qui
+        // le référencent : recettes, stock, listes, groupes, sessions…).
+        before: async (data: { email: string }) => {
+          return { data: { id: data.email.split("@")[0] } };
+        },
+        // Crée automatiquement le groupe personnel (foyer solo) de tout
+        // nouvel utilisateur — voir db/schema.ts (groups/groupMembers) et
+        // lib/groups.ts. Mis en file après la transaction de création (voir
+        // node_modules/better-auth/dist/db/with-hooks.mjs,
+        // queueAfterTransactionHook) : ne bloque jamais la réponse
+        // d'inscription. `getOrCreateGroupForUser` sert aussi de filet de
+        // sécurité dans requireAuth si jamais ce hook n'avait pas encore
+        // couru au moment du premier appel API du nouvel utilisateur.
         after: async (createdUser: { id: string; name: string }) => {
           await getOrCreateGroupForUser(createdUser.id, createdUser.name);
         },
