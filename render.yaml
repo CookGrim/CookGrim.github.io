@@ -7,7 +7,7 @@ services:
     name: cookgrim-api
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build --workspace=@cookgrim/api
+    buildCommand: npm install && npm run build --workspace=@cookgrim/shared && npm run build --workspace=@cookgrim/api
     startCommand: npm run start --workspace=@cookgrim/api
     envVars:
       - key: NODE_ENV
@@ -30,7 +30,7 @@ services:
   - type: web
     name: cookgrim-web
     runtime: static
-    buildCommand: npm install && npm run build --workspace=@cookgrim/web
+    buildCommand: npm install && npm run build --workspace=@cookgrim/shared && npm run build --workspace=@cookgrim/web
     staticPublishPath: apps/web/dist
     envVars:
       - key: VITE_API_URL
