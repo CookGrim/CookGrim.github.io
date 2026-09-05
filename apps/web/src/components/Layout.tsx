@@ -61,7 +61,7 @@ export function Layout() {
                 to={item.to}
                 end={item.end}
                 className={({ isActive }) =>
-                  `rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                  `flex-1 rounded-full px-4 py-2 text-center text-sm font-medium transition-colors ${
                     isActive
                       ? "bg-(--color-plum) text-(--color-tile-fg)"
                       : "text-(--color-text-muted) hover:text-(--color-text)"

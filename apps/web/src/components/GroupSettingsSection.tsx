@@ -116,13 +116,15 @@ export function GroupSettingsSection() {
             <h3 className="font-display text-lg font-semibold text-(--color-text)">
               {group.group.name}
             </h3>
-            <button
-              type="button"
-              onClick={onStartRename}
-              className="text-sm text-(--color-plum) underline underline-offset-4"
-            >
-              Renommer
-            </button>
+            {isOwner && (
+              <button
+                type="button"
+                onClick={onStartRename}
+                className="text-sm text-(--color-plum) underline underline-offset-4"
+              >
+                Renommer
+              </button>
+            )}
           </div>
         )}
 

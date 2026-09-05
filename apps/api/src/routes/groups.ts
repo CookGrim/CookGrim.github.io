@@ -74,10 +74,20 @@ const renameInput = z.object({
   name: z.string().trim().min(1, "Le nom est requis.").max(60, "60 caractères maximum."),
 });
 
-// PATCH /api/groups/me — renomme mon groupe. Ouvert à tout membre : c'est un
-// nom collectif ("Foyer Dupont"), pas une donnée sensible.
+// PATCH /api/groups/me — renomme mon groupe. Réservé au propriétaire (même
+// contrôle que DELETE /members/:userId ci-dessous).
 groupsRoute.patch("/me", async (c) => {
+  const caller = c.get("user");
   const groupId = c.get("groupId");
+
+  const [callerMembership] = await db
+    .select({ role: groupMembers.role })
+    .from(groupMembers)
+    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, caller.id)));
+  if (callerMembership?.role !== "owner") {
+    return c.json({ message: "Seul le propriétaire du groupe peut le renommer." }, 403);
+  }
+
   const parsed = renameInput.safeParse(await c.req.json());
   if (!parsed.success) {
     return c.json({ message: "Requête invalide.", issues: parsed.error.issues }, 400);
